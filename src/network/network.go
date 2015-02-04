@@ -1,13 +1,5 @@
 package network
 
-import(
-"net"
-//"fmt"
-"bytes"
-"encoding/gob"
-"log"
-)
-
 import (
 "net"
 "fmt"
