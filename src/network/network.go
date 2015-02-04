@@ -20,7 +20,7 @@ const bcast = "129.241.187.157"
 const udpPort = "2878"
 
 
-func ReceiveMessage(transmitChannel chan Message) {
+func ReceiveMessage(transmitChannel chan Packet) {
 	//Initializing
 	localAddr, err := net.ResolveUDPAddr("udp", net.JoinHostPort( "",udpPort))
 	if err != nil {
@@ -50,7 +50,7 @@ func ReceiveMessage(transmitChannel chan Message) {
 			}
 
 			receiveBuffer.Write(receiveBufferRaw)
-			var mssg Message
+			var mssg Packet
 			err = messageDecoder.Decode(&mssg)
 			if err != nil {
 				log.Fatal("Could not decode message: ", err)

@@ -6,7 +6,7 @@ import(
 )
 
 func main(){
-	transmitChannel := make(chan network.Message,5)
+	transmitChannel := make(chan network.Packet,5)
 	go network.ReceiveMessage(transmitChannel)
 	for {
 		message := <- transmitChannel
