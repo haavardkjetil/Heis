@@ -8,35 +8,27 @@ package driver
 import "C"
 	
 import (
-
 "log"
 )
 
-//TODO: Dette burde legge i en egen type fil
 type ButtonType_t int
-
 const(
 	BUTTON_CALL_UP ButtonType_t = iota
 	BUTTON_CALL_DOWN 
 	BUTTON_CALL_INSIDE 
 )
 
-//TODO: Kanskje dette også?
 const (
 	N_FLOORS = 4
 	N_BUTTONS = 3
 )
 
-//TODO: OG dette?
 type MotorDirection_t int
-
 const(
-	DIR_DOWN = -1
-	DIR_STOP = 0
-	DIR_UP = 1
+	DIR_DOWN MotorDirection_t = iota
+	DIR_STOP 
+	DIR_UP
 )
-
-
 
 var (
 	lampChannelMatrix = [N_FLOORS][N_BUTTONS]int{
@@ -75,12 +67,12 @@ func Init() bool {
 }
 
 func SetMotorDirection(dir MotorDirection_t) {
-	if dir == 0{
+	if dir == DIR_STOP{
 		C.io_write_analog(MOTOR,0)
-	}else if (dir > 0){
+	}else if (dir == DIR_UP){
 		C.io_clear_bit(MOTORDIR)
 		C.io_write_analog(MOTOR,2800)
-	}else if (dir < 0){
+	}else if (dir == DIR_DOWN){
 		C.io_set_bit(MOTORDIR);
 		C.io_write_analog(MOTOR,2800)
 	}
