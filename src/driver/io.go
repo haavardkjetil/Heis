@@ -47,6 +47,8 @@ var (
 	}
 )
 
+//TODO: LEgg til sjekk om den er initialisert
+//TODO: endre navn til konvensjon
 func Init() bool {
 	if (int(C.io_init()) == 0) {
 		return false
@@ -75,7 +77,10 @@ func SetMotorDirection(dir MotorDirection_t) {
 	}else if (dir == DIR_DOWN){
 		C.io_set_bit(MOTORDIR);
 		C.io_write_analog(MOTOR,2800)
+	}else {
+		log.Fatal( "Invalid argument; motor direction")
 	}
+
 }
 
 
@@ -96,8 +101,12 @@ func GetButtonSignal(button ButtonType_t floor int) bool {
 	if floor < 0 || floor >= N_FLOORS {
 		log.Fatal( "Invalid floor number")
 	}
-	if ((button == BUTTON_CALL_UP && floor == N_FLOORS - 1) || (button == BUTTON_CALL_DOWN && floor == 0)|| !(button == BUTTON_CALL_UP || button == BUTTON_CALL_DOWN || button == BUTTON_CALL_INSIDE)) {
+	if ((button == BUTTON_CALL_UP && floor == N_FLOORS - 1) || (button == BUTTON_CALL_DOWN && floor == 0)){
 		log.Fatal( "Invalid combination of floor and button")
+	}
+
+	if !(button == BUTTON_CALL_UP || button == BUTTON_CALL_DOWN || button == BUTTON_CALL_INSIDE) {
+		log.Fatal( "Invalid argument; button type")
 	}
 
 	if(int(C.io_read_bit(C.int(buttonChannelMatrix[floor][button]))) == 1) {
@@ -138,8 +147,12 @@ func SetButtonLamp(button ButtonType_t floor int, value int) {
 	if floor < 0 || floor >= N_FLOORS {
 		log.Fatal( "Invalid floor number")
 	}
-	if ((button == BUTTON_CALL_UP && floor == N_FLOORS - 1) || (button == BUTTON_CALL_DOWN && floor == 0)|| !(button == BUTTON_CALL_UP || button == BUTTON_CALL_DOWN || button == BUTTON_CALL_INSIDE)) {
+	if ((button == BUTTON_CALL_UP && floor == N_FLOORS - 1) || (button == BUTTON_CALL_DOWN && floor == 0)){
 		log.Fatal( "Invalid combination of floor and button")
+	}
+
+	if !(button == BUTTON_CALL_UP || button == BUTTON_CALL_DOWN || button == BUTTON_CALL_INSIDE) {
+		log.Fatal( "Invalid argument; button type")
 	}
 
 	if(value == 1) {

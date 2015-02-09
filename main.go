@@ -25,11 +25,10 @@ func testNetwork(){
 func testIO() {
 	// Initialize hardware
     if !driver.Init() {
-        log.Fatal("Unable to initialize elevator hardware!\n")
+        log.Fatal("Unable to initialize elevator hardware!")
     }
 
-    println("Press STOP button to stop elevator and exit program.\n")
-    println(driver.DIR_DOWN)
+    println("Press STOP button to stop elevator and exit program.")
     driver.SetMotorDirection(driver.DIR_DOWN)
 
     for {
