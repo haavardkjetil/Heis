@@ -3,23 +3,26 @@ package main
 import(
 "network"
 "driver"
-"fmt"
+//"fmt"
 "log"
 )
 
 func main() {
-	testIO()
+	testNetwork()
 }
 
 
 func testNetwork(){
-	transmitChannel := make(chan network.Packet,5)
-	go network.ReceiveMessage(transmitChannel)
-	for {
-		message := <- transmitChannel
-		fmt.Println(message.Type)
-		fmt.Println(message.Postition)
-	}
+    network.Run(4)
+
+
+	// transmitChannel := make(chan network.Packet,5)
+	// go network.ReceiveMessage(transmitChannel)
+	// for {
+	// 	message := <- transmitChannel
+	// 	fmt.Println(message.Type)
+	// 	fmt.Println(message.Postition)
+	// }
 }
 
 func testIO() {
@@ -29,19 +32,19 @@ func testIO() {
     }
 
     println("Press STOP button to stop elevator and exit program.")
-    driver.SetMotorDirection(driver.DIR_DOWN)
+    driver.Set_motor_direction(driver.DIR_DOWN)
 
     for {
         // Change direction when we reach top/bottom floor
-    	if driver.GetFloorSensorSignal() == 3 {
-            driver.SetMotorDirection(driver.DIR_DOWN)
-        } else if driver.GetFloorSensorSignal() == 0 {
-            driver.SetMotorDirection(driver.DIR_UP)
+    	if driver.Get_floor_sensor_signal() == 3 {
+            driver.Set_motor_direction(driver.DIR_DOWN)
+        } else if driver.Get_floor_sensor_signal() == 0 {
+            driver.Set_motor_direction(driver.DIR_UP)
         }
 
         // Stop elevator and exit program if the stop button is pressed
-        if driver.GetStopSignal() {
-        	driver.SetMotorDirection(driver.DIR_STOP)
+        if driver.Get_stop_signal() {
+        	driver.Set_motor_direction(driver.DIR_STOP)
             break
         }
     }

@@ -18,10 +18,8 @@ const(
 	BUTTON_CALL_INSIDE 
 )
 
-const (
-	N_FLOORS = 4
-	N_BUTTONS = 3
-)
+const N_FLOORS = 4
+
 
 type MotorDirection_t int
 const(
@@ -31,7 +29,7 @@ const(
 )
 
 var (
-	lampChannelMatrix = [N_FLOORS][N_BUTTONS]int{
+	lampChannelMatrix = [N_FLOORS][3]int{
 		
 		{LIGHT_UP1, LIGHT_DOWN1, LIGHT_COMMAND1},
 		{LIGHT_UP2, LIGHT_DOWN2, LIGHT_COMMAND2},
@@ -39,36 +37,44 @@ var (
 		{LIGHT_UP4, LIGHT_DOWN4, LIGHT_COMMAND4},
 	}
 
-	buttonChannelMatrix = [N_FLOORS][N_BUTTONS]int{
+	buttonChannelMatrix = [N_FLOORS][3]int{
 		{BUTTON_UP1, BUTTON_DOWN1, BUTTON_COMMAND1},
 	    {BUTTON_UP2, BUTTON_DOWN2, BUTTON_COMMAND2},
 	    {BUTTON_UP3, BUTTON_DOWN3, BUTTON_COMMAND3},
 	    {BUTTON_UP4, BUTTON_DOWN4, BUTTON_COMMAND4},
 	}
 )
+// func Run() bool {
+// 	if(!init()){
+// 		return 0
+// 	}
+// 	for{
+
+// 	}
+// }
+
 
 //TODO: LEgg til sjekk om den er initialisert
-//TODO: endre navn til konvensjon
 func Init() bool {
 	if (int(C.io_init()) == 0) {
 		return false
 	} 
 	for etg := 0; etg < N_FLOORS; etg++ {
 		if (etg != 0) {
-			SetButtonLamp(BUTTON_CALL_DOWN, etg, 0)
+			Set_button_lamp(BUTTON_CALL_DOWN, etg, 0)
 		}	
 		if (etg != N_FLOORS - 1) {
-			SetButtonLamp(BUTTON_CALL_UP, etg, 0)
+			Set_button_lamp(BUTTON_CALL_UP, etg, 0)
 		}
-		SetButtonLamp(BUTTON_CALL_INSIDE, etg, 0)
+		Set_button_lamp(BUTTON_CALL_INSIDE, etg, 0)
 	}
-	SetStopLamp(0)
-	SetDoorLamp(0)
-	SetFloorIndicator(0)
+	Set_stop_lamp(0)
+	Set_door_lamp(0)
+	Set_floor_indicator(0)
 	return true
 }
 
-func SetMotorDirection(dir MotorDirection_t) {
+func Set_motor_direction(dir MotorDirection_t) {
 	if dir == DIR_STOP{
 		C.io_write_analog(MOTOR,0)
 	}else if (dir == DIR_UP){
@@ -84,7 +90,7 @@ func SetMotorDirection(dir MotorDirection_t) {
 }
 
 
-func GetFloorSensorSignal() int{
+func Get_floor_sensor_signal() int{
 	if(int(C.io_read_bit(C.int(SENSOR_FLOOR1))) == 1){
 		return 0
 	}else if (int(C.io_read_bit(C.int(SENSOR_FLOOR2))) == 1) {
@@ -97,7 +103,7 @@ func GetFloorSensorSignal() int{
 	return -1
 }
 
-func GetButtonSignal(button ButtonType_t floor int) bool {
+func Get_button_signal(button ButtonType_t floor int) bool {
 	if floor < 0 || floor >= N_FLOORS {
 		log.Fatal( "Invalid floor number")
 	}
@@ -116,7 +122,7 @@ func GetButtonSignal(button ButtonType_t floor int) bool {
 	}
 }
 
-func SetFloorIndicator(floor int) {
+func Set_floor_indicator(floor int) {
 	if floor < 0 || floor >= N_FLOORS {
 		log.Fatal( "Invalid floor number")
 	}
@@ -143,7 +149,7 @@ func SetFloorIndicator(floor int) {
 
 }
 
-func SetButtonLamp(button ButtonType_t floor int, value int) {
+func Set_button_lamp(button ButtonType_t floor int, value int) {
 	if floor < 0 || floor >= N_FLOORS {
 		log.Fatal( "Invalid floor number")
 	}
@@ -163,11 +169,11 @@ func SetButtonLamp(button ButtonType_t floor int, value int) {
 
 }
 
-func GetStopSignal() bool {
+func Get_stop_signal() bool {
 	return ( int(C.io_read_bit(STOP)) == 1)
 }
 
-func SetStopLamp(value int) {
+func Set_stop_lamp(value int) {
 	if(value == 1){
 		C.io_set_bit(LIGHT_STOP)
 	}else if value == 0 {
@@ -175,7 +181,7 @@ func SetStopLamp(value int) {
 	}
 }
 
-func SetDoorLamp(value int) {
+func Set_door_lamp(value int) {
 	if (value == 1) {
 		C.io_set_bit(LIGHT_DOOR_OPEN)
 	}else {
@@ -183,7 +189,7 @@ func SetDoorLamp(value int) {
 	}
 }
 
-func GetObstructionSignal() bool {
+func Get_obstruction_signal() bool {
 	return ( int(C.io_read_bit(OBSTRUCTION)) == 1)
 }
 
