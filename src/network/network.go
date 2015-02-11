@@ -9,11 +9,11 @@ import (
 "bytes"
 "encoding/gob"
 "sort"
-"time"
+//"time"
 )
 // TODO: endre navn på funksjoner
-const bcast = "129.241.187.157"
-const udpPort = "2878"
+const bcast = "129.241.187.255"
+const udpPort = "2900"
 const SEND_WINDOW = 100 //milliseconds
 
 type Packet_t struct {  //TODO: Endre navn?
@@ -138,16 +138,14 @@ func Run(nFloors int) {
 	transmitChannel := make(chan Packet_t,5)
 	quit := make(chan int)
 	//status <- true
-	go send_message(transmitChannel,quit)
+	go receive_message(transmitChannel,quit)
 	for {
-		p := newPacket(nFloors)
-		p.Participants = append(p.Participants,"222.222.222.222")
-		p.Participants = append(p.Participants,"333.333.333.333")
-		transmitChannel <-p
-		time.Sleep(time.Second)
-		//println("Setting quit")
-		//quit <- 0
-		//println("Quit set")
+		println("pending")
+		packet := <- transmitChannel 
+		println("\n New package:")
+		println(packet.Participants[0])
+		println(packet.Participants[1])
+		println(packet.Participants[2])
 	}
 
 
@@ -188,20 +186,27 @@ func receive_message(transmitChannel chan Packet_t, quit chan int) {
 				case <-quit:
 					return
 				default:
-					receiveBuffer.Reset()
-					_, from, err := recieveConnection.ReadFromUDP( receiveBufferRaw )
+					receiveBuffer.Reset() 
+					println("Funker1")
+					_, from, err := recieveConnection.ReadFromUDP( receiveBufferRaw ) 
+					println("Funker2")
 					if from.String() == recieveConnection.LocalAddr().String() {
 						continue
 					}
 					if err != nil {
 						log.Fatal("Error receiving UDP packet: " + err.Error(),err )
 					}
-
+					println("Funker3")
 					receiveBuffer.Write(receiveBufferRaw)
-					var mssg Packet_t
-					err = UDPpacketDecoder.Decode(&mssg)
+					println("Funker4")
+					
+					mssg := Packet_t{} // Mulig feil her og neste linje
+					err = UDPpacketDecoder.Decode(&mssg) 
+					println("Funker5")
 					if err != nil {
-						log.Fatal("Could not decode message: ", err)
+						log.Print("Could not decode message: ", err)
+						receiveBuffer.Reset()
+						continue
 					}
 
 					transmitChannel <- mssg 

@@ -103,7 +103,7 @@ func Get_floor_sensor_signal() int{
 	return -1
 }
 
-func Get_button_signal(button ButtonType_t floor int) bool {
+func Get_button_signal(button ButtonType_t, floor int) bool {
 	if floor < 0 || floor >= N_FLOORS {
 		log.Fatal( "Invalid floor number")
 	}
