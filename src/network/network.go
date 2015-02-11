@@ -9,7 +9,7 @@ import (
 "bytes"
 "encoding/gob"
 "sort"
-//"time"
+"time"
 )
 // TODO: endre navn på funksjoner
 const bcast = "129.241.187.157"
@@ -144,7 +144,10 @@ func Run(nFloors int) {
 		p.Participants = append(p.Participants,"222.222.222.222")
 		p.Participants = append(p.Participants,"333.333.333.333")
 		transmitChannel <-p
-		quit <- 0
+		time.Sleep(time.Second)
+		//println("Setting quit")
+		//quit <- 0
+		//println("Quit set")
 	}
 
 
@@ -183,9 +186,8 @@ func receive_message(transmitChannel chan Packet_t, quit chan int) {
 		for {
 			select{
 				case <-quit:
-					break
+					return
 				default:
-					println("Looping")
 					receiveBuffer.Reset()
 					_, from, err := recieveConnection.ReadFromUDP( receiveBufferRaw )
 					if from.String() == recieveConnection.LocalAddr().String() {
@@ -230,8 +232,9 @@ func send_message(transmitChannel chan Packet_t, quit chan int){
 	for {
 		select{
 			case <-quit:
-				break
-			default:		
+				return
+			default:	
+				println("Looping")	
 				sendBuffer.Reset() 
 				newPacket := <- transmitChannel
 
@@ -248,5 +251,4 @@ func send_message(transmitChannel chan Packet_t, quit chan int){
 				}
 		}
 	}
-	return
 }
