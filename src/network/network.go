@@ -57,6 +57,7 @@ func calculate_next_sender(Participants []string, lastSender string) string {
 	}
 }
 
+
 func message_organizer(nFloors int) {  //TODO: Dust navn; bør endres
 	packet := newPacket(nFloors)
 	//timer := time.NewTimer(time.Millisecond * SEND_WINDOW)
