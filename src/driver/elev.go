@@ -30,23 +30,10 @@ const(
 	DIR_UP
 )
 
-type DriverCommunication_t struct { 
-	
-	ButtonLampChan_pull chan ButtonLampUpdate_t
-	ButtonSensorChan_push chan Button_t
-
-	FloorSensorChan_push chan int
-	FloorIndicatorChan_pull chan int
-
-	MotorDirChan_pull chan MotorDirection_t
-	DoorLampChan_pull chan bool
-}
-
-
 func Run( buttonLampChan_pull chan ButtonLampUpdate_t,
 	      buttonSensorChan_push chan Button_t,
 	      floorSensorChan_push chan int,
-	      floorIndicatorChan_pull chan int,
+	      //floorIndicatorChan_pull chan int,
 	      motorDirChan_pull chan MotorDirection_t,
 	      doorLampChan_pull chan bool ) {
 	
@@ -65,8 +52,8 @@ func Run( buttonLampChan_pull chan ButtonLampUpdate_t,
 				set_door_lamp( value )
 			case buttonLampUpdate := <- buttonLampChan_pull:
 				set_button_lamp( buttonLampUpdate.Button, buttonLampUpdate.Value )
-			case floor := <- floorIndicatorChan_pull:
-				set_floor_indicator ( floor )
+			// case floor := <- floorIndicatorChan_pull:
+			// 	set_floor_indicator ( floor )
 			default:
 				time.Sleep(time.Millisecond)
 		}
@@ -82,6 +69,7 @@ func poll_floor_sensor(floorChan chan int) int{  //TODO: hva er best navn: poll_
 			if currentSensorSignal != get_floor_sensor_signal(){
 				currentSensorSignal = get_floor_sensor_signal()
 				floorChan <- currentSensorSignal
+				if currentSensorSignal != -1 { set_floor_indicator( currentSensorSignal ) }
 			}
 		}
 		time.Sleep(time.Millisecond)

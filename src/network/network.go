@@ -231,6 +231,10 @@ func Run(nFloors int, pullQueueChan chan queueManager.UpdatePacket_t, pushQueueC
 					case <- transmitTimer.C:
 						transmitTimer.Reset(time.Millisecond * SEND_INTERVAL)
 						sendChan <- myPacket
+						if len(myPacket.Participants) == 1 {
+							pushQueueChan <- myPacket.Orders
+							myPacket.Orders = <- pullQueueChan
+						}
 						//println("sending packet to: ", myPacket.NextSender)
 				}
 

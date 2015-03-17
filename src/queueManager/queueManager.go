@@ -5,6 +5,7 @@ import (
 "errors"
 .	"fmt"
 "sort"
+"driver"
 )
 
 
@@ -68,24 +69,72 @@ func copy_map(dst, src map[string]Elevator_t){
 	}
 }
 
-func RunQueueManager(localIP string, 
-	numFloors int, 
-	networkReceive, networkTransmit chan UpdatePacket_t, 
-	orderChan chan Order_t, 
-	statusChan chan ElevatorStatus_t, 
-	elevatorCommandChan chan ElevatorCommand_t, 
-	positionChan, quitChan chan int){
+func getNextDestination(elevator Elevator_t, numPositions int) int {
+	initialPosition := elevator.Position
+	initialStatus := elevator.Status
+	orders := elevator.Orders
+	destination := -1
+	upTime := Inf(1)
+	downTime := Inf(1)
+	shouldDoSomething := false
+	if (initialStatus == MOVING_UP || initialStatus == IDLE) {
+		for position := initialPosition; position < numPositions; position++{
+			if position % 2 == 0{
+				floor := position/2
+				if orders[floor][BUTTON_CALL_UP] || orders[floor][BUTTON_CALL_INSIDE] {
+					destination = position
+					elevator.Status = MOVING_UP
+					upTime, _ = calculate_cost(initialPosition, numPositions, (numPositions+1)/2, initialStatus, elevator.Orders)
+					shouldDoSomething = true
+					break
+				}
+			}
+		}
+	}
+	if (initialStatus == MOVING_DOWN || initialStatus == IDLE) {
+		for position := initialPosition; position >= 0; position--{
+			if position % 2 == 0{
+				floor := position/2
+				if orders[floor][BUTTON_CALL_DOWN] || orders[floor][BUTTON_CALL_INSIDE] {
+					elevator.Status = MOVING_DOWN
+					downTime, _ = calculate_cost(initialPosition, numPositions, (numPositions+1)/2, initialStatus, elevator.Orders)
+					if initialStatus == IDLE {
+						if downTime <= upTime{
+							destination = position
+						}
+					}else{
+						destination = position
+					}
+					shouldDoSomething = true
+					break
+				}
+			}
+		}
+	}
+	if (!shouldDoSomething) {return -1}
+	return destination
+}
 
+func RunQueueManager(localIP string, 
+					numFloors int, 
+					networkReceive, networkTransmit chan UpdatePacket_t, 
+					//orderChan chan Order_t, 
+					statusChan chan ElevatorStatus_t, 
+	      			buttonSensorChan_pull chan driver.Button_t,
+	      			deleteOrder_pull chan int,
+					destinationChan_push chan int, 
+					positionChan chan int){
+	numPositions := numFloors*2-1
 	globalElevators := make( map[string]Elevator_t )
 	localElevator := Elevator_t{
-		IDLE, 0, numFloors*2-1, numFloors, make([][]bool, numFloors),
+		IDLE, 0, numPositions, numFloors, make([][]bool, numFloors),
 	}
 	var globalOrders = make( [][]bool, numFloors)
 	for floor := 0; floor < numFloors; floor++ {
 		localElevator.Orders[floor] = make([]bool, 3)
 		globalOrders[floor] = make([]bool, 2)
 		localElevator.Orders[floor][BUTTON_CALL_UP] = false
-		localElevator.Orders[floor][BUTTON_CALL_DOWN] = false
+		localElevator.Orders[floor][BUTTON_CALL_DOWN] = false 
 		localElevator.Orders[floor][BUTTON_CALL_INSIDE] = false
 		globalOrders[floor][BUTTON_CALL_UP] = false
 		globalOrders[floor][BUTTON_CALL_DOWN] = false
@@ -93,66 +142,79 @@ func RunQueueManager(localIP string,
 
 	globalElevators[localIP] = localElevator
 	var futureOrderUpdates []Order_t 
+	Println("Queuemanager waiting for position...")
 	initialPosition := <- positionChan
 	update_elevator_position(&localElevator, initialPosition)
+	localElevator.Position = 3
+	localElevator.Status = UNKNOWN
 	networkTransmit <- UpdatePacket_t{
 		globalElevators, globalOrders,
 	}
+	//PrintOrderQueues(globalElevators)
 	Println("Elevator queue system initialized.")
 	for{
 		select{
-			case newStatus := <- statusChan:
-				localElevator.Status = newStatus
-			case newOrderUpdate := <- orderChan:
-				if newOrderUpdate.Operation == ADD{
-					add_order(&localElevator, newOrderUpdate.Floor, newOrderUpdate.ButtonCall, globalOrders)
-				}else{
-					delete_order(&localElevator, newOrderUpdate.Floor, newOrderUpdate.ButtonCall, globalOrders)
-				}
-				redistribute_orders(&globalElevators, globalOrders)
-				PrintOrderQueues(globalElevators)
-				futureOrderUpdates = append(futureOrderUpdates, newOrderUpdate)
-				//Calculate action -> send recommended action
-			case newPosition := <- positionChan:
-				update_elevator_position(&localElevator, newPosition)
-				//Calculate action -> send recommended action
-			case networkUpdate := <- networkReceive:
-				//copy public system info:
-				copy_map(globalElevators, networkUpdate.Elevators)
-				merge_bool_matrix(globalOrders, networkUpdate.GlobalOrders)
-				//add new local system info:
-				//networkUpdate.Elevators[localIP] = localElevator
+		case newStatus := <- statusChan:
+			localElevator.Status = newStatus
 
-				//merge global orders:
-				for _, newOrder := range futureOrderUpdates{
-					if newOrder.Operation == ADD{
-						add_order(&localElevator, newOrder.Floor, newOrder.ButtonCall, globalOrders)
-					}else{
-						delete_order(&localElevator, newOrder.Floor, newOrder.ButtonCall, globalOrders)
-					}
+		case floorServed := <- deleteOrder_pull:
+			delete_order(&localElevator, floorServed, globalOrders)
+			redistribute_orders(&globalElevators, globalOrders)
+			var globalDelete Order_t
+			globalDelete.Operation = DELETE
+			globalDelete.Floor = floorServed
+			futureOrderUpdates = append(futureOrderUpdates, globalDelete)
+			//PrintOrderQueues(globalElevators)
+
+		case newPosition := <- positionChan:
+			update_elevator_position(&localElevator, newPosition)
+			//PrintOrderQueues(globalElevators)
+
+		case newButtonCall := <- buttonSensorChan_pull:
+			Println("Ny order til ", newButtonCall.Floor)
+			var newOrder Order_t
+			newOrder.Operation = ADD
+			newOrder.Floor = newButtonCall.Floor
+			if newButtonCall.Type == driver.BUTTON_CALL_UP{ newOrder.ButtonCall = BUTTON_CALL_UP}
+			if newButtonCall.Type == driver.BUTTON_CALL_DOWN{ newOrder.ButtonCall = BUTTON_CALL_DOWN}
+			if newButtonCall.Type == driver.BUTTON_CALL_INSIDE{ newOrder.ButtonCall = BUTTON_CALL_INSIDE}
+			futureOrderUpdates = append(futureOrderUpdates, newOrder)
+
+		case networkUpdate := <- networkReceive:
+			//copy public system info:
+			copy_map(globalElevators, networkUpdate.Elevators)
+			merge_bool_matrix(globalOrders, networkUpdate.GlobalOrders)
+			//add new local system info:
+			//networkUpdate.Elevators[localIP] = localElevator
+
+			//merge global orders:
+			for _, newOrder := range futureOrderUpdates{
+				if newOrder.Operation == ADD{
+					add_order(&localElevator, newOrder.Floor, newOrder.ButtonCall, globalOrders)
+				}else{
+					delete_order(&localElevator, newOrder.Floor, globalOrders)
 				}
-				futureOrderUpdates = nil
-				globalElevators[localIP] = localElevator
-				//redistribute
-				redistribute_orders(&globalElevators, globalOrders)
-				copy_map(networkUpdate.Elevators, globalElevators)
-				merge_bool_matrix(networkUpdate.GlobalOrders, globalOrders)
-				//deliver updated packet
-				networkTransmit <- networkUpdate
-				PrintOrderQueues(networkUpdate.Elevators)
-				//Calculate action -> send recommended action
-			case <- quitChan:
-				redistribute_orders(&globalElevators, globalOrders)
-				PrintOrderQueues(globalElevators)
-				return 
-			default:
-				break
+			}
+			futureOrderUpdates = nil
+			globalElevators[localIP] = localElevator
+			//redistribute
+			redistribute_orders(&globalElevators, globalOrders)
+			copy_map(networkUpdate.Elevators, globalElevators)
+			merge_bool_matrix(networkUpdate.GlobalOrders, globalOrders)
+			//deliver updated packet
+			networkTransmit <- networkUpdate
+			PrintOrderQueues(networkUpdate.Elevators)
+			nextDestination := getNextDestination(localElevator, numPositions)
+			//Println(nextDestination)
+			destinationChan_push <- nextDestination
+			//Calculate action -> send recommended action
 		}
 	}
 }
 
 func update_elevator_position(elevator *Elevator_t, position int) error{
-	if position < 0 || position > elevator.NumFloors {
+	if position < 0 || position > elevator.NumPositions {
+		Println("Attempted to update position: position out of range.")
 		return errors.New("Attempted to update position: position out of range.")
 	}
 	elevator.Position = position
@@ -320,6 +382,7 @@ func calculate_cost(initialPosition, numPositions, numFloors int, initialStatus 
 			}
 		}
 		if initialStatus == IDLE {
+			// dersom de er like returneres den siste (tiden nedover).
 			totalTime = Min( totalTime, driveTime + waitTime )
 		}else{
 			totalTime = driveTime + waitTime
@@ -375,7 +438,7 @@ func copy_bool_matrix(dst, src [][]bool) bool {
 	return true
 }
 
-func delete_order(source *Elevator_t, floor int, buttonCall ButtonCall_t, globalOrders [][]bool) error{
+func delete_order(source *Elevator_t, floor int, globalOrders [][]bool) error{
 	if floor < 0 || floor >= source.NumFloors || floor >= len(globalOrders){
 		return errors.New("Call to add_order(): floor does not exist.")
 	}
@@ -454,9 +517,13 @@ func calculate_next_action(elevator Elevator_t) ElevatorCommand_t{
 }
 
 func PrintOrderQueues(elevators map[string]Elevator_t){
+
 	elevatorList := make([]string, 0, len(elevators))
 	for elevatorIP := range elevators{
 		elevatorList = append(elevatorList, elevatorIP)
+	}
+	if len(elevators) == 0{
+		return
 	}
 	sort.Strings(elevatorList)
 	Println("")
