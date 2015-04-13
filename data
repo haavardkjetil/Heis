@@ -1,8 +1,9 @@
-Sequence number: 94
-NextSender: 129.241.187.153
-ActiveSender: 129.241.187.153
+Sequence number: 13
+NextSender: 129.241.187.156
+ActiveSender: 129.241.187.158
 Participants: 
-   Participant #0: 129.241.187.153
+   Participant #0: 129.241.187.156
+   Participant #1: 129.241.187.158
 
- Number of failures: 5
+ Number of failures: 3
 RTT: 0.0000e+00

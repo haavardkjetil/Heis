@@ -6,6 +6,7 @@ import (
 .	"fmt"
 "sort"
 "driver"
+"log"
 )
 
 
@@ -56,17 +57,7 @@ type UpdatePacket_t struct{
 
 type Order_t struct{
 	Operation OrderCommand_t
-	ButtonCall ButtonCall_t
-	Floor int
-}
-
-func copy_map(dst, src map[string]Elevator_t){
-	for key, _ := range dst{
-		delete(dst, key)
-	}
-	for key, element := range src{
-		dst[key] = element
-	}
+	Button driver.Button_t  			// Æsj..:!
 }
 
 func getNextDestination(elevator Elevator_t, numPositions int) int {
@@ -78,10 +69,10 @@ func getNextDestination(elevator Elevator_t, numPositions int) int {
 	downTime := Inf(1)
 	shouldDoSomething := false
 	if (initialStatus == MOVING_UP || initialStatus == IDLE) {
-		for position := initialPosition; position < numPositions; position++{
+		for position := numPositions-1; position >= initialPosition; position--{
 			if position % 2 == 0{
 				floor := position/2
-				if orders[floor][BUTTON_CALL_UP] || orders[floor][BUTTON_CALL_INSIDE] {
+				if orders[floor][BUTTON_CALL_UP] || orders[floor][BUTTON_CALL_DOWN] || orders[floor][BUTTON_CALL_INSIDE] {
 					destination = position
 					elevator.Status = MOVING_UP
 					upTime, _ = calculate_cost(initialPosition, numPositions, (numPositions+1)/2, initialStatus, elevator.Orders)
@@ -92,10 +83,10 @@ func getNextDestination(elevator Elevator_t, numPositions int) int {
 		}
 	}
 	if (initialStatus == MOVING_DOWN || initialStatus == IDLE) {
-		for position := initialPosition; position >= 0; position--{
+		for position := 0; position <= initialPosition; position++{
 			if position % 2 == 0{
 				floor := position/2
-				if orders[floor][BUTTON_CALL_DOWN] || orders[floor][BUTTON_CALL_INSIDE] {
+				if orders[floor][BUTTON_CALL_UP] || orders[floor][BUTTON_CALL_DOWN] || orders[floor][BUTTON_CALL_INSIDE]{
 					elevator.Status = MOVING_DOWN
 					downTime, _ = calculate_cost(initialPosition, numPositions, (numPositions+1)/2, initialStatus, elevator.Orders)
 					if initialStatus == IDLE {
@@ -111,6 +102,7 @@ func getNextDestination(elevator Elevator_t, numPositions int) int {
 			}
 		}
 	}
+	elevator.Status = initialStatus
 	if (!shouldDoSomething) {return -1}
 	return destination
 }
@@ -121,6 +113,7 @@ func RunQueueManager(localIP string,
 					//orderChan chan Order_t, 
 					statusChan chan ElevatorStatus_t, 
 	      			buttonSensorChan_pull chan driver.Button_t,
+	      			buttonLampChan_push chan driver.ButtonLampUpdate_t,
 	      			deleteOrder_pull chan int,
 					destinationChan_push chan int, 
 					positionChan chan int){
@@ -145,8 +138,6 @@ func RunQueueManager(localIP string,
 	Println("Queuemanager waiting for position...")
 	initialPosition := <- positionChan
 	update_elevator_position(&localElevator, initialPosition)
-	localElevator.Position = 3
-	localElevator.Status = UNKNOWN
 	networkTransmit <- UpdatePacket_t{
 		globalElevators, globalOrders,
 	}
@@ -159,10 +150,10 @@ func RunQueueManager(localIP string,
 
 		case floorServed := <- deleteOrder_pull:
 			delete_order(&localElevator, floorServed, globalOrders)
-			redistribute_orders(&globalElevators, globalOrders)
+			//redistribute_orders(&globalElevators, globalOrders)
 			var globalDelete Order_t
 			globalDelete.Operation = DELETE
-			globalDelete.Floor = floorServed
+			globalDelete.Button.Floor = floorServed
 			futureOrderUpdates = append(futureOrderUpdates, globalDelete)
 			//PrintOrderQueues(globalElevators)
 
@@ -171,16 +162,17 @@ func RunQueueManager(localIP string,
 			//PrintOrderQueues(globalElevators)
 
 		case newButtonCall := <- buttonSensorChan_pull:
-			Println("Ny order til ", newButtonCall.Floor)
+			Print("Ny order til ", newButtonCall.Floor, ", ")
+			if newButtonCall.Type == driver.BUTTON_CALL_UP{ Println("UP")}
+			if newButtonCall.Type == driver.BUTTON_CALL_DOWN{ Println("DOWN")}
+			if newButtonCall.Type == driver.BUTTON_CALL_INSIDE{ Println("INSIDE")}
 			var newOrder Order_t
 			newOrder.Operation = ADD
-			newOrder.Floor = newButtonCall.Floor
-			if newButtonCall.Type == driver.BUTTON_CALL_UP{ newOrder.ButtonCall = BUTTON_CALL_UP}
-			if newButtonCall.Type == driver.BUTTON_CALL_DOWN{ newOrder.ButtonCall = BUTTON_CALL_DOWN}
-			if newButtonCall.Type == driver.BUTTON_CALL_INSIDE{ newOrder.ButtonCall = BUTTON_CALL_INSIDE}
+			newOrder.Button = newButtonCall
 			futureOrderUpdates = append(futureOrderUpdates, newOrder)
 
 		case networkUpdate := <- networkReceive:
+
 			//copy public system info:
 			copy_map(globalElevators, networkUpdate.Elevators)
 			merge_bool_matrix(globalOrders, networkUpdate.GlobalOrders)
@@ -188,27 +180,68 @@ func RunQueueManager(localIP string,
 			//networkUpdate.Elevators[localIP] = localElevator
 
 			//merge global orders:
+			foo := false
 			for _, newOrder := range futureOrderUpdates{
+				foo = true
 				if newOrder.Operation == ADD{
-					add_order(&localElevator, newOrder.Floor, newOrder.ButtonCall, globalOrders)
+					add_order(&localElevator, newOrder.Button, globalOrders)
 				}else{
-					delete_order(&localElevator, newOrder.Floor, globalOrders)
+					delete_order(&localElevator, newOrder.Button.Floor, globalOrders)
 				}
 			}
+			update_lights(numFloors, globalOrders, localElevator.Orders, buttonLampChan_push)
 			futureOrderUpdates = nil
 			globalElevators[localIP] = localElevator
 			//redistribute
-			redistribute_orders(&globalElevators, globalOrders)
+			redistribute_orders(globalElevators, globalOrders, foo)
 			copy_map(networkUpdate.Elevators, globalElevators)
 			merge_bool_matrix(networkUpdate.GlobalOrders, globalOrders)
 			//deliver updated packet
 			networkTransmit <- networkUpdate
 			PrintOrderQueues(networkUpdate.Elevators)
 			nextDestination := getNextDestination(localElevator, numPositions)
+			Println("nextDestination = ", nextDestination)
 			//Println(nextDestination)
 			destinationChan_push <- nextDestination
 			//Calculate action -> send recommended action
 		}
+	}
+}
+
+func update_lights(numFloors int, globalOrders, localOrders [][]bool, buttonLampChan_push chan driver.ButtonLampUpdate_t){
+	for etg := 0; etg < numFloors; etg++{
+		button := driver.Button_t{
+			driver.BUTTON_CALL_UP, etg,
+		}
+		if etg != numFloors-1{
+			buttonLampChan_push <- driver.ButtonLampUpdate_t{
+				button, globalOrders[etg][BUTTON_CALL_UP],
+			} 
+		}
+		if etg != 0{		
+			button.Type = driver.BUTTON_CALL_DOWN
+			buttonLampChan_push <- driver.ButtonLampUpdate_t{
+				button, globalOrders[etg][BUTTON_CALL_DOWN],
+			}
+		}
+		button.Type = driver.BUTTON_CALL_INSIDE
+		buttonLampChan_push <- driver.ButtonLampUpdate_t{
+			button, localOrders[etg][BUTTON_CALL_INSIDE],
+		} 
+	}
+}
+
+func copy_map(dst, src map[string]Elevator_t){
+	for key, _ := range dst{
+		if _, ok := src[key]; !ok{
+			delete(dst, key)
+		}
+	}
+	if len(src) == 0{
+		log.Fatal("Len(src) etter = ", len(src))
+	}
+	for key, element := range src{
+		dst[key] = element
 	}
 }
 
@@ -228,6 +261,12 @@ func find_optimal_elevator(elevators map[string]Elevator_t, buttonCall ButtonCal
 		sortedElevatorIPs = append(sortedElevatorIPs, elevatorIP)
 	}
 	sort.Strings(sortedElevatorIPs)
+
+	//For testing:
+	if len(sortedElevatorIPs) == 0{
+		log.Fatal("Ingen heiser registrert i kømodul.")
+	}
+
 	bestElevator := sortedElevatorIPs[0]
 
 	for _, elevatorIP := range sortedElevatorIPs {
@@ -391,32 +430,32 @@ func calculate_cost(initialPosition, numPositions, numFloors int, initialStatus 
 	return totalTime, nil
 }
 
-func redistribute_orders(elevators *(map[string]Elevator_t), sharedOrders [][]bool){
+func redistribute_orders(elevators map[string]Elevator_t, sharedOrders [][]bool, foo bool){
 	for floor := range sharedOrders{
-		for _, elevator := range *elevators{
+		for _, elevator := range elevators{
 			elevator.Orders[floor][BUTTON_CALL_UP] = false
 			elevator.Orders[floor][BUTTON_CALL_DOWN] = false
 		}
 	}
 	for floor := range sharedOrders{
 		if sharedOrders[floor][BUTTON_CALL_UP] {
-			bestElevator := find_optimal_elevator(*elevators, BUTTON_CALL_UP, floor)
-			(*elevators)[bestElevator].Orders[floor][BUTTON_CALL_UP] = true
+			bestElevator := find_optimal_elevator(elevators, BUTTON_CALL_UP, floor)
+			elevators[bestElevator].Orders[floor][BUTTON_CALL_UP] = true
 		}
 		if sharedOrders[floor][BUTTON_CALL_DOWN] {
-			bestElevator := find_optimal_elevator(*elevators, BUTTON_CALL_DOWN, floor)
-			(*elevators)[bestElevator].Orders[floor][BUTTON_CALL_DOWN] = true
+			bestElevator := find_optimal_elevator(elevators, BUTTON_CALL_DOWN, floor)
+			elevators[bestElevator].Orders[floor][BUTTON_CALL_DOWN] = true
 		}
 	}
 }
 
 func merge_bool_matrix(dst, src [][]bool) bool {
 	if dst == nil || src == nil || len(dst) != len(src){
-		return false
+		log.Fatal("len(dst) != len(src)")
 	}
 	for i := range src{
 		if len(dst[i]) != len(src[i]){
-			return false
+			log.Fatal("len(dst[i]) != len(src[i])")
 		}
 		for j := range src[i]{
 			if src[i][j] || dst[i][j]{
@@ -450,16 +489,20 @@ func delete_order(source *Elevator_t, floor int, globalOrders [][]bool) error{
 	return nil
 }
 
-func add_order(source *Elevator_t, floor int, buttonCall ButtonCall_t, globalOrders [][]bool) error{
+func add_order(source *Elevator_t, activeButton driver.Button_t, globalOrders [][]bool) error{
+	floor := activeButton.Floor
 	if floor < 0 || floor >= source.NumFloors || floor >= len(globalOrders){
 		return errors.New("Call to add_order(): floor does not exist.")
-	}else if !(buttonCall == BUTTON_CALL_UP || buttonCall == BUTTON_CALL_DOWN || buttonCall == BUTTON_CALL_INSIDE) {
-		return errors.New("Call to add_order(): invalid buttoncall.")
 	}
-	if buttonCall == BUTTON_CALL_INSIDE{
+
+	if activeButton.Type == driver.BUTTON_CALL_INSIDE{
 		source.Orders[floor][BUTTON_CALL_INSIDE] = true
+	}else if activeButton.Type == driver.BUTTON_CALL_UP{
+		globalOrders[floor][BUTTON_CALL_UP] = true
+	}else if activeButton.Type == driver.BUTTON_CALL_DOWN{
+		globalOrders[floor][BUTTON_CALL_DOWN] = true
 	}else{
-		globalOrders[floor][buttonCall] = true
+		log.Fatal("Ordretypen finnes ikke!")
 	}
 	return nil
 }

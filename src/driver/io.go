@@ -93,8 +93,7 @@ func set_button_lamp(button Button_t, value bool) {
 		log.Fatal( "Invalid floor number")
 	}
 	if ((button.Type == BUTTON_CALL_UP && button.Floor == N_FLOORS - 1) || (button.Type == BUTTON_CALL_DOWN && button.Floor == 0)){
-		println("Set")
-		log.Fatal( "Invalid combination of floor and button")
+		log.Fatal( "Invalid combination of floor and button in set_button_lamp")
 	}
 
 	if !(button.Type == BUTTON_CALL_UP || button.Type == BUTTON_CALL_DOWN || button.Type == BUTTON_CALL_INSIDE) {

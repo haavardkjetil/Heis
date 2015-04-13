@@ -15,7 +15,7 @@ func main() {
 	networkReceive := make(chan queueManager.UpdatePacket_t)
 	networkTransmit := make(chan queueManager.UpdatePacket_t)
 
-	buttonLampChan := make(chan driver.ButtonLampUpdate_t,10)
+	buttonLampChan := make(chan driver.ButtonLampUpdate_t, numFloors*3)
 	buttonSensorChan := make(chan driver.Button_t,10)
 	floorSensorChan := make(chan int,10)
 	motorDirChan := make(chan driver.MotorDirection_t,10)
@@ -29,7 +29,7 @@ func main() {
 
 	go network.Run(4,networkTransmit,networkReceive)
 
-	go queueManager.RunQueueManager(localIP, numFloors, networkReceive, networkTransmit, statusChan, buttonSensorChan, floorServed, destinationChan, positionChan)
+	go queueManager.RunQueueManager(localIP, numFloors, networkReceive, networkTransmit, statusChan, buttonSensorChan, buttonLampChan, floorServed, destinationChan, positionChan)
 
 	go stateMachine.RunStateMachine(numFloors, destinationChan,floorServed, positionChan, statusChan, floorSensorChan, motorDirChan, doorLampChan)
 

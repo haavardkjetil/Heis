@@ -90,6 +90,11 @@ func (packet *Packet_t ) merge_packets(receivedPacket Packet_t, pullQueueChan ch
 	// println("This is what i received: ")
 	// queueManager.PrintOrderQueues(packet.Orders.Elevators)
 	//t0 := time.Now()
+	if len(receivedPacket.Participants) == 0 {
+		receivedPacket.print()
+		log.Fatal("Participants list is empty")
+	}
+
 	pushQueueChan <- receivedPacket.Orders
 	packet.Orders = <- pullQueueChan
 	//t = time.Since(t0).Seconds()
