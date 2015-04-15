@@ -238,8 +238,8 @@ func Run(localIP string,
 			//merge global orders:
 			
 			for _, newOrder := range futureOrderUpdates{
-				shouldRedistribute = true
 				if newOrder.Operation == ADD{
+					shouldRedistribute = true
 					add_order(&localElevator, newOrder.Button, globalOrders)
 					Println("Added ", newOrder.Button.Floor)
 				}else{
@@ -356,11 +356,12 @@ func find_optimal_elevator(elevators map[string]Elevator_t, buttonCall ButtonCal
 			Println(err)
 			continue
 		}
-		if newTravelTime == previousTravelTime {
-			bestTime = newTravelTime
-			bestElevator = elevatorIP
-			break
-		}else if newTravelTime < bestTime {
+		// if newTravelTime == previousTravelTime {
+		// 	bestTime = newTravelTime
+		// 	bestElevator = elevatorIP
+		// 	break
+		// }else 
+		if newTravelTime < bestTime {
 			bestTime = newTravelTime
 			bestElevator = elevatorIP
 		}else if newTravelTime == bestTime {
@@ -686,10 +687,10 @@ func PrintOrderQueues(elevators map[string]Elevator_t){
 	for i := range elevatorList{
 		var status string
 		if elevators[elevatorList[i]].Status == UNKNOWN {status = "UNKNOWN"}
-		if elevators[elevatorList[i]].Status == MOVING_UP {status = "MOVING UP"}
-		if elevators[elevatorList[i]].Status == MOVING_DOWN {status = "MOVING DOWN"}
-		if elevators[elevatorList[i]].Status == IDLE {status = "IDLE"}
-		Print("Status: ", status, "				")
+		if elevators[elevatorList[i]].Status == MOVING_UP {status = "MOVING UP			"}
+		if elevators[elevatorList[i]].Status == MOVING_DOWN {status = "MOVING DOWN			"}
+		if elevators[elevatorList[i]].Status == IDLE {status = "IDLE				"}
+		Print("Status: ", status)
 	}
 	Println("")
 	for i := range elevatorList{
