@@ -5,4 +5,4 @@ go install driver
 go install queueManager
 go install stateMachine
 
-go run driverStateMachineTest.go
+go run main.go

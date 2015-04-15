@@ -1,8 +1,10 @@
 package driver
 
-import "log"
-
-import "time"
+import(
+"log"
+"time"
+"sync"
+)
 
 type ButtonType_t int
 const(
@@ -35,11 +37,13 @@ func Run( buttonLampChan_pull chan ButtonLampUpdate_t,
 	      floorSensorChan_push chan int,
 	      //floorIndicatorChan_pull chan int,
 	      motorDirChan_pull chan MotorDirection_t,
-	      doorLampChan_pull chan bool ) {
+	      doorLampChan_pull chan bool,
+	      initialize sync.WaitGroup) {
 	
-	if !initIO(){
+	if !init_IO(){
 		log.Fatal("Could not initialize I/O driver")
 	}
+	initialize.Done()
 
 	go poll_floor_sensor( floorSensorChan_push )
 	go poll_button_signal( buttonSensorChan_push )

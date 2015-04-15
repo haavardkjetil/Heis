@@ -14,7 +14,7 @@ import (
 "encoding/gob"
 "sort"
 "time"
-
+"sync"
 )
 
 // TODO HOVEDLINJER:
@@ -122,17 +122,17 @@ func (packet *Packet_t) print() {
 	print("Sequence #",packet.SequenceNumber, "\n")
 }
 
-func newPacket(nFloors int, initOrders queueManager.UpdatePacket_t) (Packet_t) {
+func new_packet(myID string, nFloors int, initOrders queueManager.UpdatePacket_t) (Packet_t) {
 	packet := Packet_t{}
 	packet.SequenceNumber = -1
-	packet.Participants = append(packet.Participants, getMyIP())
+	packet.Participants = append(packet.Participants, myID)
 	packet.Orders = initOrders
-	packet.NextSender = getMyIP()
-	packet.ActiveSender = getMyIP()
+	packet.NextSender = myID
+	packet.ActiveSender = myID
 	return packet
 }
 
-func getMyIP() string {
+func get_my_IP() string {
 	addrs, err := net.InterfaceAddrs()
     	if err != nil {
         	log.Fatal(err)
@@ -147,10 +147,6 @@ func getMyIP() string {
             }
         }
     return "invalidIP"
-}
-
-func Global_get_ip() string {  //TODO: slett denne
-	return getMyIP()
 }
 
 //Hvorfor ikke bare ta inn en hel packet?
@@ -172,10 +168,9 @@ func calculate_next_sender(participants []string, lastSender string) string {
 	}
 }
 
-func Run(nFloors int, pullQueueChan chan queueManager.UpdatePacket_t, pushQueueChan chan queueManager.UpdatePacket_t) {  //TODO: Dust navn; bør endres
+func Run(myID string, nFloors int, pullQueueChan chan queueManager.UpdatePacket_t, pushQueueChan chan queueManager.UpdatePacket_t, initialize sync.WaitGroup) {  //TODO: Dust navn; bør endres
 	initOrders := <-pullQueueChan //TODO: nytt navn
-	myPacket := newPacket(nFloors,initOrders)
-	myIP := getMyIP()
+	myPacket := new_packet(myID, nFloors,initOrders)
 	timeoutTimer := time.NewTimer(time.Millisecond * TIMEOUT_INTERVAL)
 	transmitTimer := time.NewTimer(time.Millisecond * SEND_INTERVAL)
 	iAmAloneTimer := time.NewTimer(time.Millisecond * TIMEOUT_INTERVAL * 5)
@@ -192,11 +187,11 @@ func Run(nFloors int, pullQueueChan chan queueManager.UpdatePacket_t, pushQueueC
 
 
 	 //var sum1 float64 = 0
-	 println("\nNetwork Module Initialized\n")
+	initialize.Done()
 
 
 	for {
-		myPacket.NextSender = calculate_next_sender(myPacket.Participants, myIP)  //TODO: bør endres slik at den kun tar inn ett argument
+		myPacket.NextSender = calculate_next_sender(myPacket.Participants, myID)  //TODO: bør endres slik at den kun tar inn ett argument
 		
 		logger(myPacket,fails)
 		
@@ -216,7 +211,7 @@ func Run(nFloors int, pullQueueChan chan queueManager.UpdatePacket_t, pushQueueC
 					case receivedPacket := <-receiveChan:
 						//println("received packet from: ",receivedPacket.ActiveSender, " sent to: ", receivedPacket.NextSender)
 						if myPacket.adress_exists_in_list(receivedPacket.ActiveSender){
-							if myPacket.newer_sequence_number(receivedPacket.SequenceNumber) && receivedPacket.adress_exists_in_list(myIP){
+							if myPacket.newer_sequence_number(receivedPacket.SequenceNumber) && receivedPacket.adress_exists_in_list(myID){
 								iAmActiveSender = false
 								shouldBreak = true
 							}
@@ -227,7 +222,7 @@ func Run(nFloors int, pullQueueChan chan queueManager.UpdatePacket_t, pushQueueC
 
 
 					case <- timeoutTimer.C:
-						if myPacket.NextSender != myIP {
+						if myPacket.NextSender != myID {
 							myPacket.remove_participant(myPacket.NextSender)
 							fails++
 							println("timeout")
@@ -254,14 +249,14 @@ func Run(nFloors int, pullQueueChan chan queueManager.UpdatePacket_t, pushQueueC
 					case receivedPacket := <-receiveChan:
 						//println("received packet from: ",receivedPacket.ActiveSender, " sent to: ", receivedPacket.NextSender)
 						//println("received seqence #: ",receivedPacket.SequenceNumber,"local seqence #: ", myPacket.SequenceNumber)
-						if receivedPacket.NextSender == myIP && myPacket.newer_sequence_number(receivedPacket.SequenceNumber) { 
+						if receivedPacket.NextSender == myID && myPacket.newer_sequence_number(receivedPacket.SequenceNumber) { 
 							myPacket.merge_packets(receivedPacket, pullQueueChan, pushQueueChan)
 							iAmActiveSender = true
 							shouldBreak = true
 						}
 					case <- iAmAloneTimer.C: 
 						var emptyList []string   //TODO: litt dust løsning
-						myPacket.Participants = append(emptyList, getMyIP()) //Sletter hele listen, mulig bug her
+						myPacket.Participants = append(emptyList, myID ) //Sletter hele listen, mulig bug her
 						iAmActiveSender = true
 						fails++
 						println("I am alone")
@@ -303,7 +298,7 @@ func receive_message(transmitChannel chan Packet_t, quit chan int) {
 					UDPpacketDecoder := gob.NewDecoder(&receiveBuffer)
 
 					_, from, err := recieveConnection.ReadFromUDP( receiveBufferRaw )
-					if from.String() == getMyIP() + ":" + udpSendPort {
+					if from.String() == get_my_IP() + ":" + udpSendPort {
 						continue
 					}
 					if err != nil {

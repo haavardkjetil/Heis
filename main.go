@@ -1,41 +1,76 @@
 package main
 
-import (
-"queueManager"
+import(
 "driver"
 "stateMachine"
-"time"
+"queueManager"
 "network"
 )
 
-func main(){
-	localIP := network.Global_get_ip()
-	numFloors := 4
+import(
+"sync"
+"net"
+"log"
+)
+
+// Navneforslag:
+// newtorkToQueueChan
+// queueToNetworkChan
+
+func main() {
+	var shutdown sync.WaitGroup
+	var initialize sync.WaitGroup
+
+
+	numFloors := driver.N_FLOORS
 	networkReceive := make(chan queueManager.UpdatePacket_t)
 	networkTransmit := make(chan queueManager.UpdatePacket_t)
 
-	go network.Run(4,networkTransmit,networkReceive)
-
-	orderChan := make(chan queueManager.Order_t)
-	positionChan := make(chan int)
-	globalStatusChan := make(chan queueManager.ElevatorStatus_t)
-	commandChan := make(chan queueManager.ElevatorCommand_t)
-	quitChan := make(chan int)
-
-	go queueManager.RunQueueManager(localIP, numFloors, networkReceive, networkTransmit, orderChan, globalStatusChan, commandChan, positionChan, quitChan)
-
-	//driver
-	buttonLampChan := make(chan driver.ButtonLampUpdate_t,10)
+	buttonLampChan := make(chan driver.ButtonLampUpdate_t, numFloors*3)
 	buttonSensorChan := make(chan driver.Button_t,10)
 	floorSensorChan := make(chan int,10)
-	floorIndicatorChan := make(chan int,10)
 	motorDirChan := make(chan driver.MotorDirection_t,10)
 	doorLampChan := make(chan bool,10)
 
-	go stateMachine.RunStateMachine(numFloors, floorSensorChan, positionChan, buttonSensorChan, orderChan, globalStatusChan, commandChan, motorDirChan, doorLampChan)
+	destinationChan := make(chan int,10) 
+	statusChan := make(chan queueManager.ElevatorStatus_t,10)
+	floorServed := make(chan int,10)
+	positionChan := make(chan int,10)
 
-	go driver.Run(buttonLampChan, buttonSensorChan, floorSensorChan, floorIndicatorChan, motorDirChan, doorLampChan)
-	for{
-		time.Sleep(time.Second * 10)
-	}
-}	
+	shutdown.Add(4)
+	//TODO: inkrementer her
+	initialize.Add(3)
+
+	go network.Run( getLocalID(),4,networkTransmit,networkReceive, initialize)
+
+	//TODO: Legg til initialize i queueManager også
+	go queueManager.Run( getLocalID(), numFloors, networkReceive, networkTransmit, statusChan, buttonSensorChan, buttonLampChan, floorServed, destinationChan, positionChan)
+
+	go stateMachine.Run(numFloors, destinationChan,floorServed, positionChan, statusChan, floorSensorChan, motorDirChan, doorLampChan, initialize )
+
+	go driver.Run(buttonLampChan, buttonSensorChan, floorSensorChan, motorDirChan, doorLampChan, initialize )
+	
+	initialize.Wait()
+	println("System initialized")
+
+	shutdown.Wait()
+	println("System is shutting down")
+}
+
+
+func getLocalID() string {
+	addrs, err := net.InterfaceAddrs()
+    	if err != nil {
+        	log.Fatal(err)
+         }
+        for _, address := range addrs {
+       		// check the address type and if it is not a loopback the display it
+        	if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+            	if ipnet.IP.To4() != nil {
+                	return ipnet.IP.String()
+                }
+
+            }
+        }
+    return "invalidID"
+}

@@ -2,20 +2,21 @@ package stateMachine
 
 import (
 "queueManager"
-.	"fmt"
-."driver"
+"driver"
 "time"
 "log"
+"sync"
 )
 
-func RunStateMachine(numFloors int, 
+func Run(numFloors int, 
 		destinationChan_pull chan int,
 		floorServedChan_push chan int,
 		positionUpdate_push chan int, 
 		statusChan_push chan queueManager.ElevatorStatus_t, 
 		floorSensorChan_pull chan int, 
-		motorDirChan_push chan MotorDirection_t, 
-		doorLampChan_push chan bool){
+		motorDirChan_push chan driver.MotorDirection_t, 
+		doorLampChan_push chan bool,
+		initialize sync.WaitGroup){
 
 	numPositions := numFloors*2-1
 	status := queueManager.UNKNOWN
@@ -27,13 +28,18 @@ func RunStateMachine(numFloors int,
 	errorDetectionTimer.Stop()
 	destinationPos := 0
 	
+	status, currentPosition = reinitialize(driver.DIR_DOWN, motorDirChan_push, doorLampChan_push, floorSensorChan_pull, -1, numPositions)
+	positionUpdate_push <- currentPosition
+	statusChan_push <- status
+	initialize.Done()
 
 	for{
-		if status == queueManager.UNKNOWN{
-			status, currentPosition = reinitialize(DIR_DOWN, motorDirChan_push, doorLampChan_push, floorSensorChan_pull, -1, numPositions)
-			positionUpdate_push <- currentPosition
-			statusChan_push <- status
-		}
+		//TODO: TENGER vi dette. Også er UNKNOWN state unødvendig?
+		// if status == queueManager.UNKNOWN{
+		// 	status, currentPosition = reinitialize(driver.DIR_DOWN, motorDirChan_push, doorLampChan_push, floorSensorChan_pull, -1, numPositions)
+		// 	positionUpdate_push <- currentPosition
+		// 	statusChan_push <- status
+		// }
 
 		select{
 		case destinationPos = <- destinationChan_pull:			
@@ -55,7 +61,7 @@ func RunStateMachine(numFloors int,
 				// invalid state.
 			case queueManager.IDLE:
 				if (currentPosition == destinationPos){
-					motorDirChan_push <- DIR_STOP
+					motorDirChan_push <- driver.DIR_STOP
 					status = queueManager.DOOR_OPEN
 					doorLampChan_push <- true
 					doorTimer.Reset(doorOpenInterval)
@@ -102,7 +108,7 @@ func RunStateMachine(numFloors int,
 
 
 				}else if (currentPosition == numPositions-1){
-					status, currentPosition = reinitialize(DIR_DOWN, motorDirChan_push, doorLampChan_push, floorSensorChan_pull, -1, numPositions)
+					status, currentPosition = reinitialize(driver.DIR_DOWN, motorDirChan_push, doorLampChan_push, floorSensorChan_pull, -1, numPositions)
 					statusChan_push <- status
 				}else{
 					currentPosition += 1
@@ -116,7 +122,7 @@ func RunStateMachine(numFloors int,
 				case <- waitForRecalculation.C:
 				}
 				if (currentPosition == destinationPos){
-					motorDirChan_push <- DIR_STOP
+					motorDirChan_push <- driver.DIR_STOP
 					status = queueManager.DOOR_OPEN
 					doorLampChan_push <- true
 					doorTimer.Reset(doorOpenInterval)
@@ -135,7 +141,7 @@ func RunStateMachine(numFloors int,
 					}
 					currentPosition = newFloor * 2
 				}else if (currentPosition == 0){
-					status, currentPosition = reinitialize(DIR_UP, motorDirChan_push, doorLampChan_push, floorSensorChan_pull, -1, numPositions)
+					status, currentPosition = reinitialize(driver.DIR_UP, motorDirChan_push, doorLampChan_push, floorSensorChan_pull, -1, numPositions)
 					statusChan_push <- status
 				}else{
 					currentPosition -= 1
@@ -150,7 +156,7 @@ func RunStateMachine(numFloors int,
 				}
 
 				if (currentPosition == destinationPos){
-					motorDirChan_push <- DIR_STOP
+					motorDirChan_push <- driver.DIR_STOP
 					status = queueManager.DOOR_OPEN
 					doorLampChan_push <- true
 					doorTimer.Reset(doorOpenInterval)
@@ -172,17 +178,17 @@ func RunStateMachine(numFloors int,
 	}
 }
 
-func emergency_shut_down(currentPosition int, motorDirChan_push chan MotorDirection_t, doorLampChan_push chan bool, errorMsg string){
-	motorDirChan_push <- DIR_STOP
+func emergency_shut_down(currentPosition int, motorDirChan_push chan driver.MotorDirection_t, doorLampChan_push chan bool, errorMsg string){
+	motorDirChan_push <- driver.DIR_STOP
 	doorLampChan_push <- (currentPosition % 2 == 0)
 	time.Sleep(time.Millisecond*100)
 	log.Fatal(errorMsg)
 }
 
 
-func reinitialize(newDir MotorDirection_t, motorDirChan_push chan MotorDirection_t, doorLampChan_push chan bool, floorSensorChan_pull chan int, currentPos, numPositions int) (queueManager.ElevatorStatus_t, int) {
+func reinitialize(newDir driver.MotorDirection_t, motorDirChan_push chan driver.MotorDirection_t, doorLampChan_push chan bool, floorSensorChan_pull chan int, currentPos, numPositions int) (queueManager.ElevatorStatus_t, int) {
 	// Initialize!
-	Println("Status == queueManager.UNKNOWN! \nReinitializing local elevator...")
+	println("Status == queueManager.UNKNOWN! \nReinitializing local elevator...")
 	if currentPos % 2 != 0 || currentPos < 0 || currentPos >= numPositions{
 		doorLampChan_push <- false
 		motorDirChan_push <- newDir
@@ -194,25 +200,25 @@ func reinitialize(newDir MotorDirection_t, motorDirChan_push chan MotorDirection
 			emergency_shut_down(currentPos, motorDirChan_push, doorLampChan_push, "Unable to initialize. Something is wrong.")
 		}
 	}
-	motorDirChan_push <- DIR_STOP
-	Println("Elevator initialized")
+	motorDirChan_push <- driver.DIR_STOP
+	println("Elevator initialized")
 	return queueManager.IDLE, currentPos
 }
 
-func set_direction(destinationPos, currentPos, numPositions int, motorDirChan_push chan MotorDirection_t) (queueManager.ElevatorStatus_t) {
+func set_direction(destinationPos, currentPos, numPositions int, motorDirChan_push chan driver.MotorDirection_t) (queueManager.ElevatorStatus_t) {
 	if(destinationPos == -1){
-		motorDirChan_push <- DIR_STOP
+		motorDirChan_push <- driver.DIR_STOP
 		return queueManager.IDLE
 	}
 	if destinationPos < 0 || destinationPos > numPositions{
 		log.Fatal("Invalid position in set_direction()","destinationPos:",destinationPos,"currentPos:",currentPos)
 	}else if destinationPos < currentPos{	
-		motorDirChan_push <- DIR_DOWN
+		motorDirChan_push <- driver.DIR_DOWN
 		return queueManager.MOVING_DOWN
 	}else if destinationPos > currentPos{
-		motorDirChan_push <- DIR_UP
+		motorDirChan_push <- driver.DIR_UP
 		return queueManager.MOVING_UP
 	}
-	motorDirChan_push <- DIR_STOP
+	motorDirChan_push <- driver.DIR_STOP
 	return queueManager.DOOR_OPEN
 }

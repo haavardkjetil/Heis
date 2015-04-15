@@ -137,7 +137,7 @@ func getNextDestination(elevator Elevator_t, numPositions int) int {
 	return destinationDown
 }
 
-func RunQueueManager(localIP string, 
+func Run(localIP string, 
 					numFloors int, 
 					networkReceive, networkTransmit chan UpdatePacket_t, 
 					//orderChan chan Order_t, 
@@ -181,7 +181,11 @@ func RunQueueManager(localIP string,
 	for{
 		select{
 		case newStatus := <- statusChan:
-			localElevator.Status = newStatus
+
+			//OBS OBS! Stor endring her:
+			if newStatus != DOOR_OPEN{
+				localElevator.Status = newStatus
+			}
 
 		case floorServed := <- deleteOrder_pull:
 			//delete_order(&localElevator, floorServed, globalOrders)
@@ -217,10 +221,15 @@ func RunQueueManager(localIP string,
 				shouldRedistribute = true
 				merge_bool_matrix(globalOrders, networkUpdate.GlobalOrders)
 			}else if !compare_bool_matrix(globalOrders, networkUpdate.GlobalOrders) {
+				Println("Endring i ordreliste!")
+				Println("lokal versjon: ", globalOrders)
+				Println("global versjon: ", networkUpdate.GlobalOrders)
 				if order_was_added(networkUpdate.GlobalOrders, globalOrders){
+					Println("En ordre har blitt lagt til.")
 					shouldRedistribute = true
 				} 
 				copy_bool_matrix(globalOrders, networkUpdate.GlobalOrders)
+				Println("Ny lokal versjon: ", globalOrders)
 			}
 
 			//add new local system info:
@@ -232,8 +241,10 @@ func RunQueueManager(localIP string,
 				shouldRedistribute = true
 				if newOrder.Operation == ADD{
 					add_order(&localElevator, newOrder.Button, globalOrders)
+					Println("Added ", newOrder.Button.Floor)
 				}else{
 					delete_order(&localElevator, newOrder.Button.Floor, globalOrders)
+					Println("Deleted ", newOrder.Button.Floor)
 				}
 			}
 			update_lights(numFloors, globalOrders, localElevator.Orders, buttonLampChan_push)
@@ -242,15 +253,23 @@ func RunQueueManager(localIP string,
 			globalElevators[localIP] = localElevator
 			//redistribute
 			if shouldRedistribute{
+				Println("Før redistribute:")
+				PrintOrderQueues(globalElevators)
 				redistribute_orders(globalElevators, globalOrders)
+				Println("Etter redistribute:")
+				PrintOrderQueues(globalElevators)
 			}
-			nextDestination := getNextDestination(localElevator, numPositions)
-			destinationChan_push <- nextDestination
 			copy_map(networkUpdate.Elevators, globalElevators)
 			copy_bool_matrix(networkUpdate.GlobalOrders, globalOrders) // merge
-			//deliver updated packet
+			if shouldRedistribute{
+				Println("Dette blir sendt til nettverk:")
+				PrintOrderQueues(networkUpdate.Elevators)
+			}
 			PrintOrderQueues(networkUpdate.Elevators)
 			networkTransmit <- networkUpdate
+			nextDestination := getNextDestination(globalElevators[localIP], numPositions)
+			destinationChan_push <- nextDestination
+			//deliver updated packet
 			//Println(nextDestination)
 			//Calculate action -> send recommended action
 		}
@@ -325,12 +344,14 @@ func find_optimal_elevator(elevators map[string]Elevator_t, buttonCall ButtonCal
 		tempOrders := make( [][]bool, elevator.NumFloors )
 		copy_bool_matrix(tempOrders, elevator.Orders) 
 		previousTravelTime, err := calculate_cost(elevator.Position, elevator.NumPositions, elevator.NumFloors, elevator.Status, tempOrders)
+		Println("previousTravelTime ", elevatorIP, ": ", previousTravelTime)
 		if err != nil{
 			Println("Error in calculated_traveltime(", elevatorIP, "): ", err)
 			continue
 		}
 		tempOrders[orderedFloor][buttonCall] = true
 		newTravelTime, err := calculate_cost(elevator.Position, elevator.NumPositions, elevator.NumFloors, elevator.Status, tempOrders)
+		Println("newTravelTime ", elevatorIP, ": ", newTravelTime)
 		if err != nil{
 			Println(err)
 			continue
@@ -489,10 +510,12 @@ func redistribute_orders(elevators map[string]Elevator_t, sharedOrders [][]bool)
 	for floor := range sharedOrders{
 		if sharedOrders[floor][BUTTON_CALL_UP] {
 			bestElevator := find_optimal_elevator(elevators, BUTTON_CALL_UP, floor)
+			Println("Best elevator for ", floor, ": ", bestElevator)
 			elevators[bestElevator].Orders[floor][BUTTON_CALL_UP] = true
 		}
 		if sharedOrders[floor][BUTTON_CALL_DOWN] {
 			bestElevator := find_optimal_elevator(elevators, BUTTON_CALL_DOWN, floor)
+			Println("Best elevator for ", floor, ": ", bestElevator)
 			elevators[bestElevator].Orders[floor][BUTTON_CALL_DOWN] = true
 		}
 	}

@@ -29,7 +29,7 @@ var (
 )
 
 //TODO: LEgg til sjekk om den er initialisert
-func initIO() bool {
+func init_IO() bool {
 	if (int(C.io_init()) == 0) {
 		return false
 	} 
