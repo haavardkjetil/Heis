@@ -225,6 +225,7 @@ func Run(localIP string,
 			copy_bool_matrix(localElevator.Orders, networkUpdate.Elevators[localIP].Orders)
 			networkUpdate.Elevators[localIP] = localElevator
 
+
 			if counter > 0{
 				Println("Før adding:")
 				PrintOrderQueues(networkUpdate.Elevators)
