@@ -49,6 +49,14 @@ type Elevator_t struct{
 	Orders[][]bool
 }
 
+func MakeElevator(numFloors, position int, status ElevatorStatus_t) Elevator_t{
+	e := Elevator_t{status, position, numFloors*2-1, numFloors, make([][]bool, numFloors)}
+	for floor := 0; floor < numFloors; floor++ {
+		e.Orders[floor] = make([]bool, 3)
+	}
+	return e
+}
+
 //QueueDatagram_t
 type UpdatePacket_t struct{
 	Elevators map[string]Elevator_t
@@ -140,34 +148,28 @@ func getNextDestination(elevator Elevator_t, numPositions int) int {
 func Run(localIP string, 
 					numFloors int, 
 					networkReceive, networkTransmit chan UpdatePacket_t, 
-					//orderChan chan Order_t, 
 					statusChan chan ElevatorStatus_t, 
 	      			buttonSensorChan_pull chan driver.Button_t,
 	      			buttonLampChan_push chan driver.ButtonLampUpdate_t,
 	      			deleteOrder_pull chan int,
 					destinationChan_push chan int, 
 					positionChan chan int){
+
 	numPositions := numFloors*2-1
 	globalElevators := make( map[string]Elevator_t )
-	localElevator := Elevator_t{
-		IDLE, 0, numPositions, numFloors, make([][]bool, numFloors),
+	thisElevator := Elevator_t{
+		UNKNOWN, 0, numPositions, numFloors, make([][]bool, numFloors),
 	}
 	var globalOrders = make( [][]bool, numFloors)
 	for floor := 0; floor < numFloors; floor++ {
-		localElevator.Orders[floor] = make([]bool, 3)
+		thisElevator.Orders[floor] = make([]bool, 3)
 		globalOrders[floor] = make([]bool, 2)
-		localElevator.Orders[floor][BUTTON_CALL_UP] = false
-		localElevator.Orders[floor][BUTTON_CALL_DOWN] = false 
-		localElevator.Orders[floor][BUTTON_CALL_INSIDE] = false
-		globalOrders[floor][BUTTON_CALL_UP] = false
-		globalOrders[floor][BUTTON_CALL_DOWN] = false
 	}
-
-	globalElevators[localIP] = localElevator
+	globalElevators[localIP] = thisElevator
 	var futureOrderUpdates []Order_t 
-	Println("Queuemanager waiting for position...")
+
 	initialPosition := <- positionChan
-	update_elevator_position(&localElevator, initialPosition)
+	update_elevator_position(&thisElevator, initialPosition)
 
 	networkElevators := make(map[string]Elevator_t)
 	copy_map(networkElevators, globalElevators)
@@ -176,35 +178,33 @@ func Run(localIP string,
 	networkTransmit <- UpdatePacket_t{
 		networkElevators, networkGlobalOrders,
 	}
-	//PrintOrderQueues(globalElevators)
+
 	Println("Elevator queue system initialized.")
+	counter := 0
+	numElevators := 1
+	currentPosition := initialPosition
+	currentStatus := UNKNOWN
 	for{
 		select{
 		case newStatus := <- statusChan:
-
-			//OBS OBS! Stor endring her:
 			if newStatus != DOOR_OPEN{
-				localElevator.Status = newStatus
+				currentStatus = newStatus
 			}
 
 		case floorServed := <- deleteOrder_pull:
-			//delete_order(&localElevator, floorServed, globalOrders)
-			//redistribute_orders(&globalElevators, globalOrders)
-			var globalDelete Order_t
-			globalDelete.Operation = DELETE
-			globalDelete.Button.Floor = floorServed
-			futureOrderUpdates = append(futureOrderUpdates, globalDelete)
-			//PrintOrderQueues(globalElevators)
+			var newOrder Order_t
+			newOrder.Operation = DELETE
+			newOrder.Button.Floor = floorServed
+			futureOrderUpdates = append(futureOrderUpdates, newOrder)
 
-		case newPosition := <- positionChan:
-			update_elevator_position(&localElevator, newPosition)
-			//PrintOrderQueues(globalElevators)
+		case currentPosition = <- positionChan: 
 
 		case newButtonCall := <- buttonSensorChan_pull:
 			Print("Ny ordre til ", newButtonCall.Floor, ", ")
 			if newButtonCall.Type == driver.BUTTON_CALL_UP{ Println("UP")}
 			if newButtonCall.Type == driver.BUTTON_CALL_DOWN{ Println("DOWN")}
 			if newButtonCall.Type == driver.BUTTON_CALL_INSIDE{ Println("INSIDE")}
+
 			var newOrder Order_t
 			newOrder.Operation = ADD
 			newOrder.Button = newButtonCall
@@ -213,30 +213,22 @@ func Run(localIP string,
 		case networkUpdate := <- networkReceive:
 			shouldRedistribute := false
 
-			//copy public system info:
-			numElevators := len(globalElevators)
-			copy_map(globalElevators, networkUpdate.Elevators)
-
-			if len(globalElevators) != numElevators{
+			if len(networkUpdate.Elevators) != numElevators{
 				shouldRedistribute = true
 				merge_bool_matrix(globalOrders, networkUpdate.GlobalOrders)
-			}else if !compare_bool_matrix(globalOrders, networkUpdate.GlobalOrders) {
-				Println("Endring i ordreliste!")
-				Println("lokal versjon: ", globalOrders)
-				Println("global versjon: ", networkUpdate.GlobalOrders)
-				if order_was_added(networkUpdate.GlobalOrders, globalOrders){
-					Println("En ordre har blitt lagt til.")
-					shouldRedistribute = true
-				} 
+				numElevators = len(networkUpdate.Elevators)
+			}else{
 				copy_bool_matrix(globalOrders, networkUpdate.GlobalOrders)
-				Println("Ny lokal versjon: ", globalOrders)
 			}
 
-			//add new local system info:
-			//networkUpdate.Elevators[localIP] = localElevator
+			localElevator := MakeElevator(numFloors, currentPosition, currentStatus)
+			copy_bool_matrix(localElevator.Orders, networkUpdate.Elevators[localIP].Orders)
+			networkUpdate.Elevators[localIP] = localElevator
 
-			//merge global orders:
-			
+			if counter > 0{
+				Println("Før adding:")
+				PrintOrderQueues(networkUpdate.Elevators)
+			}
 			for _, newOrder := range futureOrderUpdates{
 				if newOrder.Operation == ADD{
 					shouldRedistribute = true
@@ -250,28 +242,20 @@ func Run(localIP string,
 			update_lights(numFloors, globalOrders, localElevator.Orders, buttonLampChan_push)
 			futureOrderUpdates = nil
 
-			globalElevators[localIP] = localElevator
-			//redistribute
+			networkUpdate.Elevators[localIP] = localElevator
+
 			if shouldRedistribute{
-				Println("Før redistribute:")
-				PrintOrderQueues(globalElevators)
-				redistribute_orders(globalElevators, globalOrders)
+				redistribute_orders(networkUpdate.Elevators, globalOrders)
 				Println("Etter redistribute:")
-				PrintOrderQueues(globalElevators)
-			}
-			copy_map(networkUpdate.Elevators, globalElevators)
-			copy_bool_matrix(networkUpdate.GlobalOrders, globalOrders) // merge
-			if shouldRedistribute{
-				Println("Dette blir sendt til nettverk:")
 				PrintOrderQueues(networkUpdate.Elevators)
 			}
+
+			copy_bool_matrix(networkUpdate.GlobalOrders, globalOrders)
+
 			PrintOrderQueues(networkUpdate.Elevators)
 			networkTransmit <- networkUpdate
-			nextDestination := getNextDestination(globalElevators[localIP], numPositions)
+			nextDestination := getNextDestination(networkUpdate.Elevators[localIP], numPositions)
 			destinationChan_push <- nextDestination
-			//deliver updated packet
-			//Println(nextDestination)
-			//Calculate action -> send recommended action
 		}
 	}
 }
@@ -388,53 +372,64 @@ func calculate_cost(initialPosition, numPositions, numFloors int, initialStatus 
 	var driveTime float64 = 0
 	var waitTime float64 = 0
 	var totalTime float64
+	var floorToFloorTime float64 = 2.2
+	var doorOpenTime float64 = 3
 	if (initialStatus == MOVING_UP || initialStatus == IDLE) {
-		var floorsPassedUpwards float64 = 0
+		var distanceTravelledUp float64 = 0
 		for position := initialPosition; position < numPositions; position++{
 			if position % 2 == 0{
 				floor := position/2
 				if tempOrders[floor][BUTTON_CALL_UP] || tempOrders[floor][BUTTON_CALL_INSIDE] {
-					driveTime += floorsPassedUpwards
-					waitTime += 3
+					driveTime += distanceTravelledUp*floorToFloorTime
+					waitTime += doorOpenTime
 					tempOrders[floor][BUTTON_CALL_UP] = false
 					tempOrders[floor][BUTTON_CALL_DOWN] = false
 					tempOrders[floor][BUTTON_CALL_INSIDE] = false
-					floorsPassedUpwards = 0
+					distanceTravelledUp = 0
+				}else if position == initialPosition + 1{
+					driveTime += distanceTravelledUp*floorToFloorTime
+					distanceTravelledUp = 0
 				}
-				floorsPassedUpwards++
+				distanceTravelledUp += 0.1
+			}else{
+				distanceTravelledUp += 0.9
 			}
 		}
-		floorsPassedUpwards--
-		var floorsPassedDownwards float64 = 0
+		distanceTravelledUp -= 0.1
+		var distanceTravelledDown float64 = 0
 		for position := numPositions; position >= 0; position--{
 			if position % 2 == 0{
 				floor := position/2
 				if tempOrders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_INSIDE] {
-					driveTime += Abs(floorsPassedDownwards - floorsPassedUpwards)
-					waitTime += 3
+					driveTime += Abs(distanceTravelledDown - distanceTravelledUp)*floorToFloorTime
+					waitTime += doorOpenTime
 					tempOrders[floor][BUTTON_CALL_UP] = false
 					tempOrders[floor][BUTTON_CALL_DOWN] = false
 					tempOrders[floor][BUTTON_CALL_INSIDE] = false
-					floorsPassedDownwards = 0
-					floorsPassedUpwards = 0
+					distanceTravelledDown = 0
+					distanceTravelledUp = 0
 				}
-				floorsPassedDownwards++
+				distanceTravelledDown += 0.1
+			}else{
+				distanceTravelledDown += 0.9
 			}
 		}
-		floorsPassedDownwards--
+		distanceTravelledDown -= 0.1
 		for position := 0; position <= initialPosition; position++{
 			if position % 2 == 0{
 				floor := position/2
 				if tempOrders[floor][BUTTON_CALL_UP] || tempOrders[floor][BUTTON_CALL_INSIDE] {
-					driveTime += Abs(floorsPassedUpwards - floorsPassedDownwards)
-					waitTime += 3
+					driveTime += Abs(distanceTravelledUp - distanceTravelledDown)*floorToFloorTime
+					waitTime += doorOpenTime
 					tempOrders[floor][BUTTON_CALL_UP] = false
 					tempOrders[floor][BUTTON_CALL_DOWN] = false
 					tempOrders[floor][BUTTON_CALL_INSIDE] = false
-					floorsPassedDownwards = 0
-					floorsPassedUpwards = 0
+					distanceTravelledDown = 0
+					distanceTravelledUp = 0
 				}
-				floorsPassedUpwards++
+				distanceTravelledUp += 0.1
+			}else{
+				distanceTravelledUp += 0.9
 			}
 		}
 		totalTime = driveTime + waitTime
@@ -443,52 +438,61 @@ func calculate_cost(initialPosition, numPositions, numFloors int, initialStatus 
 	waitTime = 0
 	copy_bool_matrix(tempOrders, orders)
 	if (initialStatus == MOVING_DOWN || initialStatus == IDLE) {
-		var floorsPassedDownwards float64 = 0
+		var distanceTravelledDown float64 = 0
 		for position := initialPosition; position >= 0; position--{
 			if position % 2 == 0{
 				floor := position/2
 				if tempOrders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_INSIDE] {
-					driveTime += floorsPassedDownwards
-					waitTime += 3
+					driveTime += distanceTravelledDown*floorToFloorTime
+					waitTime += doorOpenTime
 					tempOrders[floor][BUTTON_CALL_UP] = false
 					tempOrders[floor][BUTTON_CALL_DOWN] = false
 					tempOrders[floor][BUTTON_CALL_INSIDE] = false
-					floorsPassedDownwards = 0
+					distanceTravelledDown = 0
+				}else if position == initialPosition - 1{
+					driveTime += distanceTravelledDown*floorToFloorTime
+					distanceTravelledDown = 0
 				}
-				floorsPassedDownwards++
+				distanceTravelledDown += 0.1
+			}else{
+				distanceTravelledDown += 0.9
 			}
 		}
-		floorsPassedDownwards--
-		var floorsPassedUpwards float64 = 0
+		distanceTravelledDown -= 0.1
+		var distanceTravelledUp float64 = 0
 		for position := 0; position < numPositions; position++{
 			if position % 2 == 0{
 				floor := position/2
 				if tempOrders[floor][BUTTON_CALL_UP] || tempOrders[floor][BUTTON_CALL_INSIDE] {
-					driveTime += Abs(floorsPassedUpwards - floorsPassedDownwards)
-					waitTime += 3
+					driveTime += Abs(distanceTravelledUp - distanceTravelledDown)*floorToFloorTime
+					waitTime += doorOpenTime
 					tempOrders[floor][BUTTON_CALL_UP] = false
 					tempOrders[floor][BUTTON_CALL_DOWN] = false
 					tempOrders[floor][BUTTON_CALL_INSIDE] = false
-					floorsPassedDownwards = 0
-					floorsPassedUpwards = 0
+					distanceTravelledDown = 0
+					distanceTravelledUp = 0
 				}
-				floorsPassedUpwards++
+				distanceTravelledUp += 0.1
+			}else{
+				distanceTravelledUp += 0.9
 			}
 		}
-		floorsPassedUpwards--
+		distanceTravelledUp -= 0.1
 		for position := numPositions; position >= initialPosition; position--{
 			if position % 2 == 0{
 				floor := position/2
 				if tempOrders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_INSIDE] {
-					driveTime += Abs(floorsPassedDownwards - floorsPassedUpwards)
-					waitTime += 3
+					driveTime += Abs(distanceTravelledDown - distanceTravelledUp)*floorToFloorTime
+					waitTime += doorOpenTime
 					tempOrders[floor][BUTTON_CALL_UP] = false
 					tempOrders[floor][BUTTON_CALL_DOWN] = false
 					tempOrders[floor][BUTTON_CALL_INSIDE] = false
-					floorsPassedDownwards = 0
-					floorsPassedUpwards = 0
+					distanceTravelledDown = 0
+					distanceTravelledUp = 0
 				}
-				floorsPassedDownwards++
+				distanceTravelledDown += 0.1
+			}else{
+				distanceTravelledDown += 0.9
 			}
 		}
 		if initialStatus == IDLE {
@@ -545,8 +549,12 @@ func copy_bool_matrix(dst, src [][]bool) bool {
 		return false
 	}
 	for i := range src{
+		tempList := make([]bool, len(src[i]))
+		copy(tempList, src[i])
 		dst[i] = make([]bool, len(src[i]))
-		copy(dst[i], src[i])
+		copy(dst[i], tempList)
+		// dst[i] = make([]bool, len(src[i]))
+		// copy(dst[i], src[i])
 	}
 	return true
 }
@@ -695,7 +703,8 @@ func PrintOrderQueues(elevators map[string]Elevator_t){
 	Println("")
 	for i := range elevatorList{
 		time, _ := calculate_cost(elevators[elevatorList[i]].Position, elevators[elevatorList[i]].NumPositions, elevators[elevatorList[i]].NumFloors, elevators[elevatorList[i]].Status, elevators[elevatorList[i]].Orders) 
-		Print("Workload: ", time, " [s]", "				")
+		Printf("Workload: %.1f", time)
+		Print(" [s]", "				")
 	}
 	Println("")
 	for i := 0; i < len(elevators); i++ {
