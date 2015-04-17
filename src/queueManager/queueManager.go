@@ -252,9 +252,8 @@ func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders 
 			}
 		}
 		distanceTravelledUp -= 0.1
-		Println("distanceTravelledUp = ", distanceTravelledUp)
 		var distanceTravelledDown float64 = 0
-		for position := numPositions; position >= 0; position--{
+		for position := numPositions-1; position >= 0; position--{
 			if position % 2 == 0{
 				floor := position/2
 				if tempOrders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_INSIDE] {
@@ -299,7 +298,7 @@ func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders 
 		for position := initialPosition; position >= 0; position--{
 			if position % 2 == 0{
 				floor := position/2
-				if tempOrders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_INSIDE] {
+				if tempOrders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_INSIDE] || ( (floor == 0) && tempOrders[floor][BUTTON_CALL_UP]){
 					driveTime += distanceTravelledDown*floorToFloorTime
 					waitTime += doorOpenTime
 					tempOrders[floor][BUTTON_CALL_UP] = false
@@ -335,7 +334,7 @@ func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders 
 			}
 		}
 		distanceTravelledUp -= 0.1
-		for position := numPositions; position >= initialPosition; position--{
+		for position := numPositions-1; position >= initialPosition; position--{
 			if position % 2 == 0{
 				floor := position/2
 				if tempOrders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_INSIDE] {
@@ -542,10 +541,6 @@ func print_queues(elevators map[string]Elevator_t){
 	}
 	Println("")
 	for i := range elevatorList{
-		Print("Position: ", elevators[elevatorList[i]].Position, "			")
-	}
-	Println("")
-	for i := range elevatorList{
 		var status string
 		if elevators[elevatorList[i]].Status == UNKNOWN {status = "UNKNOWN"}
 		if elevators[elevatorList[i]].Status == MOVING_UP {status = "MOVING UP			"}
@@ -557,7 +552,7 @@ func print_queues(elevators map[string]Elevator_t){
 	for i := range elevatorList{
 		time, _ := calculate_cost(elevators[elevatorList[i]].Position, elevators[elevatorList[i]].Status, elevators[elevatorList[i]].Orders) 
 		Printf("Workload: %.1f", time)
-		Print(" [s]", "				")
+		Print(" [s]", "			")
 	}
 	Println("")
 	for i := 0; i < len(elevators); i++ {
