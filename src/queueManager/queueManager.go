@@ -61,8 +61,8 @@ type Order_t struct{
 }
 
 
-func Run(localIP string, 
-					numFloors int, 
+func Run(localIP string, 														//TX: localIP -> localID
+					numFloors int, 												//TX: Bør bruke samme navnekonvensjon på alle channels
 					networkReceive, networkTransmit chan UpdatePacket_t, 
 					statusChan chan ElevatorStatus_t, 
 	      			buttonSensorChan_pull chan driver.Button_t,
@@ -72,7 +72,7 @@ func Run(localIP string,
 					positionChan chan int){
 
 	numPositions := numFloors*2-1
-	currentPosition := <- positionChan
+	currentPosition := <- positionChan                                   //TX: Kømodulen opperer på både globale (remote heiser) og lokal. Burde derfor gjøre skillet mellom hva som er lokalt og hva som er globalt tydligere
 	currentStatus := UNKNOWN
 
 	var globalOrders = make( [][]bool, numFloors)
@@ -98,7 +98,9 @@ func Run(localIP string,
 			var newOrder Order_t
 			newOrder.Operation = DELETE
 			newOrder.Button.Floor = floorServed
-			newOrders = append(newOrders, newOrder)
+			newOrders = append(newOrders, newOrder)    //TX: newOrder og NewOrders er veldig like navn. 
+													   //Og: burde finne et nytt navn for newOrders fordi operasjonen DELETE ikke er en ny ordre. N
+													   //Navneforslag: newOrders -> queuedOrderUpdates , newOrder -> newOrderUpdate
 
 		case currentPosition = <- positionChan:
 
@@ -130,22 +132,22 @@ func Run(localIP string,
 				if newOrder.Operation == ADD{
 					shouldRedistribute = true
 					add_order(&localElevator, newOrder.Button, globalOrders)
-				}else{
+				}else{																	//TX: Hva med: " }else if newOrder.Operation == DELETE{  " ?
 					delete_order(&localElevator, newOrder.Button.Floor, globalOrders)
 				}
 			}
 			update_lights(numFloors, globalOrders, localElevator.Orders, buttonLampChan_push)
 			newOrders = nil
-			networkUpdate.Elevators[localIP] = localElevator
+			networkUpdate.Elevators[localIP] = localElevator							//TX: Kanskje hva som er global og hva som er lokal blir sammenblandet? litt usikker, kan vi diskutere det?
 			if shouldRedistribute{
-				redistribute_orders(networkUpdate.Elevators, globalOrders)
-			}
-
-			copy_bool_matrix(networkUpdate.GlobalOrders, globalOrders)
+				redistribute_orders(networkUpdate.Elevators, globalOrders) //  |
+			}															   //  | > Disse linjene skjønner jeg ikke helt hva gjør, hvorfor må copy_bool_matrix kjøres etter redistribute?
+																		   //  | > Bør endre navn slik at det er mer intuitivt
+			copy_bool_matrix(networkUpdate.GlobalOrders, globalOrders)     //  |
 			networkTransmit <- networkUpdate
 
-			nextDestination := get_next_destination(networkUpdate.Elevators[localIP], numPositions)
-			destinationChan_push <- nextDestination
+			nextDestination := get_next_destination(networkUpdate.Elevators[localIP], numPositions)  //TX: Bør endre navn på networkUpdate hvis den brukes slik
+			destinationChan_push <- nextDestination                                                  //     networkUdate høres ut som kun har med kommunikasjon med nettverk å gjøre, men flere steder brukes den til andre ting - som her
 			if shouldPrint || true {
 				print_queues(networkUpdate.Elevators)
 
@@ -187,7 +189,7 @@ func update_lights(numFloors int, globalOrders, localOrders [][]bool, buttonLamp
 
 func find_optimal_elevator(elevators map[string]Elevator_t, buttonCall ButtonCall_t, orderedFloor int) string {  
 	bestTime := Inf(1)
-	sortedIPs := make([]string, 0, len(elevators))
+	sortedIPs := make([]string, 0, len(elevators))    //TX:  IP -> ID
 	for elevatorIP := range elevators{
 		sortedIPs = append(sortedIPs, elevatorIP)
 	}
@@ -230,7 +232,7 @@ func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders 
 	var totalTime float64 = 0
 	var floorToFloorTime float64 = 2.2
 	var doorOpenTime float64 = 3
-	if (initialStatus == MOVING_UP || initialStatus == IDLE) {
+	if (initialStatus == MOVING_UP || initialStatus == IDLE) {                 //TX: går det an å gjøre seksjonen mer oversiktlig?
 		var distanceTravelledUp float64 = 0
 		for position := initialPosition; position < numPositions; position++{
 			if position % 2 == 0{
@@ -390,8 +392,8 @@ func get_next_destination(elevator Elevator_t, numPositions int) int {
 	destinationDown := -1
 	upTime := Inf(1)
 	downTime := Inf(1)
-	shouldDoSomething := false
-	if (initialStatus == MOVING_UP || initialStatus == IDLE) {
+	shouldDoSomething := false                                     					//TX: nytt navn?
+	if (initialStatus == MOVING_UP || initialStatus == IDLE) {                      //TX: går det an å gjøre seksjonen mer oversiktlig?
 		for position := initialPosition; position < numPositions; position++{
 			if position % 2 == 0{
 				floor := position/2
@@ -455,12 +457,13 @@ func get_next_destination(elevator Elevator_t, numPositions int) int {
 			}
 		}
 	}
-	if (shouldDoSomething && upTime < downTime) {return destinationUp}
+	if (shouldDoSomething && upTime < downTime) {return destinationUp}     //TX: if / else ?
 	return destinationDown
 }
 
-func merge_bool_matrix(dst, src [][]bool) bool {
-	if dst == nil || src == nil || len(dst) != len(src){
+func merge_bool_matrix(dst, src [][]bool) bool {					//TX: unødvendig å ha "_bool_" i funksjonsnavnet; det fremgår av typene til argumentene
+	if dst == nil || src == nil || len(dst) != len(src){			//Og: er det nødvendig med en returverdi? har jo sjekk med log.fatal uansett, 
+																	//	  og returnerer true uansett hvis funksjonen fullfører, og returnverdien blir ikke brukt noen steder i programmet
 		log.Fatal("len(dst) != len(src)")
 	}
 	for i := range src{
@@ -476,7 +479,7 @@ func merge_bool_matrix(dst, src [][]bool) bool {
 	return true
 }
 
-func copy_bool_matrix(dst, src [][]bool) bool {
+func copy_bool_matrix(dst, src [][]bool) bool { 				//TX: samme som for merge_bool_matrix
 	if len(dst) < len(src){
 		return false
 	}
@@ -506,7 +509,7 @@ func delete_order(source *Elevator_t, floor int, globalOrders [][]bool) error{
 func add_order(source *Elevator_t, activeButton driver.Button_t, globalOrders [][]bool) error{
 	floor := activeButton.Floor
 	if floor < 0 || floor >= source.NumFloors || floor >= len(globalOrders){
-		return errors.New("Call to add_order(): floor does not exist.")
+		return errors.New("Call to add_order(): floor does not exist.")           // TX: Bør være konsekvent på om vi brukker errors og return eller log.Fatal()
 	}
 
 	if activeButton.Type == driver.BUTTON_CALL_INSIDE{
