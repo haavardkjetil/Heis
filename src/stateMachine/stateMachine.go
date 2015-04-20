@@ -48,7 +48,7 @@ func Run(numFloors int,
 			}
 
 			switch status {
-			case queueManager.MOVING_UP:
+			case queueManager.MOVING_UP: // Nødvendig å ha med disse?
 				// do nothing
 			case queueManager.MOVING_DOWN:
 				// do nothing
@@ -72,7 +72,7 @@ func Run(numFloors int,
 				if status == queueManager.IDLE || status == queueManager.DOOR_OPEN { 
 					errorDetectionTimer.Stop()
 				}else if status == queueManager.MOVING_UP || status == queueManager.MOVING_DOWN { 
-					errorDetectionTimer.Reset(time.Second*4)
+					errorDetectionTimer.Reset(time.Second*4) // 4 bør kansjke deklareres et annet sted
 				}
 
 			}
@@ -108,19 +108,23 @@ func Run(numFloors int,
 
 
 				}else if (currentPosition == numPositions-1){
+					// Hvorfor reinitialiserer vi her? Dette kan være kilden til en liten bugg jeg så her om dagen!
 					status, currentPosition = reinitialize(driver.DIR_DOWN, motorDirChan_push, doorLampChan_push, floorSensorChan_pull, -1, numPositions)
 					statusChan_push <- status
 				}else{
 					currentPosition += 1
 				}
 				positionUpdate_push <- currentPosition
-				waitForRecalculation := time.NewTimer(time.Millisecond*50)
+				waitForRecalculation := time.NewTimer(time.Millisecond*50) // Trenger ikke denne lenger
+				// Tror faktisk vi kan droppe hele denne selecten:
 				select{
 				case currentPosition = <- floorSensorChan_pull:
+					// Har dette noen gang skjedd?
 					emergency_shut_down(currentPosition, motorDirChan_push, doorLampChan_push, "Elevator moving faster than normal.")
 				case destinationPos = <- destinationChan_pull:
 				case <- waitForRecalculation.C:
 				}
+
 				if (currentPosition == destinationPos){
 					motorDirChan_push <- driver.DIR_STOP
 					status = queueManager.DOOR_OPEN
@@ -147,6 +151,8 @@ func Run(numFloors int,
 					currentPosition -= 1
 				}
 				positionUpdate_push <- currentPosition
+
+				//Trenger ikke dette lenger:
 				waitForRecalculation := time.NewTimer(time.Millisecond*50)
 				select{
 				case currentPosition = <- floorSensorChan_pull:
@@ -206,11 +212,13 @@ func reinitialize(newDir driver.MotorDirection_t, motorDirChan_push chan driver.
 }
 
 func set_direction(destinationPos, currentPos, numPositions int, motorDirChan_push chan driver.MotorDirection_t) (queueManager.ElevatorStatus_t) {
-	if(destinationPos == -1){
+
+	// Dette er kanskje en kilde til en bugg jeg har sett, nemlig at heisen stopper når den ikke er i en etasje! En ekstra condition kanskje?
+	if(destinationPos == -1){ // && currentPos != -1
 		motorDirChan_push <- driver.DIR_STOP
 		return queueManager.IDLE
 	}
-	if destinationPos < 0 || destinationPos > numPositions{
+	if destinationPos < 0 || destinationPos > numPositions{ // numPositions-1 vel?
 		log.Fatal("Invalid position in set_direction()","destinationPos:",destinationPos,"currentPos:",currentPos)
 	}else if destinationPos < currentPos{	
 		motorDirChan_push <- driver.DIR_DOWN

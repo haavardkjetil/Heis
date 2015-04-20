@@ -46,7 +46,7 @@ func Run( buttonLampChan_pull chan ButtonLampUpdate_t,
 	initialize.Done()
 
 	go poll_floor_sensor( floorSensorChan_push )
-	go poll_button_signal( buttonSensorChan_push )
+	go poll_button_signal( buttonSensorChan_push ) // Mulig jeg har misforstått, men burde ikke disse være pull?
 
 	for{
 		select{
@@ -66,7 +66,8 @@ func Run( buttonLampChan_pull chan ButtonLampUpdate_t,
 
 }
 
-func poll_floor_sensor(floorChan chan int) int{  //TODO: hva er best navn: poll_floor_sensor() eller check_floor_sensor
+//pull/push
+func poll_floor_sensor(floorChan chan int) int{  //TODO: hva er best navn: poll_floor_sensor() eller check_floor_sensor. poll
 	currentSensorSignal := -1
 	for{
 		for i := 0; i<N_FLOORS; i++ {
@@ -80,7 +81,7 @@ func poll_floor_sensor(floorChan chan int) int{  //TODO: hva er best navn: poll_
 	}
 }
 
-func poll_button_signal(buttonChan chan Button_t){
+func poll_button_signal(buttonChan chan Button_t){ // pull/push
 	var currentSensorSignal = [N_FLOORS][3]bool{}
 
 	for{

@@ -29,6 +29,8 @@ var t float64
 const bcast = "129.241.187.255"
 const udpRcvPort = "2800"
 const udpSendPort = "3000"
+
+// Hvorfor ikke bare deklarere dem som milliseconds med en gang
 const SEND_INTERVAL = 10 //milliseconds
 const TIMEOUT_INTERVAL = 500 // milliseconds
 const SEQUENCE_NUMBER_RANGE = 100
@@ -38,7 +40,7 @@ const SEQUENCE_NUMBER_RANGE = 100
 type Packet_t struct {  //TODO: Endre navn til netWorkDatagram
 	SequenceNumber int
 	Participants []string   
-	Orders queueManager.UpdatePacket_t
+	Orders queueManager.UpdatePacket_t // Navnet Orders beskriver kanskje ikke alt som ligger i denne typen.
 	ActiveSender string
 	NextSender string
 }
@@ -62,7 +64,7 @@ func (packet *Packet_t) add_participants(newPacket Packet_t ) {
 	}
 }
 
-func (packet *Packet_t ) remove_participant(adressToRemove string) {
+func (packet *Packet_t ) remove_participant(adressToRemove string) { // addressToRemove -> participantToRemove/Delete?
 	temp := (*packet).Participants
 	sort.Strings(temp)
 	indexToRemove := sort.SearchStrings(temp,adressToRemove)
@@ -75,7 +77,7 @@ func (packet *Packet_t ) remove_participant(adressToRemove string) {
 	}
 }
 
-func (packet *Packet_t ) adress_exists_in_list(newAdress string) bool {
+func (packet *Packet_t ) adress_exists_in_list(newAdress string) bool { // Address -> name/ID/string
 	for _, currentAdress := range packet.Participants{
 		if currentAdress == newAdress{
 			return true
@@ -84,6 +86,8 @@ func (packet *Packet_t ) adress_exists_in_list(newAdress string) bool {
 	return false
 }
 
+// merge_packet trenger kanskje ikke være en medlemsfunksjon? Dessuten er det rart at en funksjon som heter merge_packets trenger to kanaler,
+// er det ikke mer naturlig at den bare har to parametre, f.eks packetA og packetB? Det er også vanskelig å se hvordan dette er en merging.
 func (packet *Packet_t ) merge_packets(receivedPacket Packet_t, pullQueueChan chan queueManager.UpdatePacket_t, pushQueueChan chan queueManager.UpdatePacket_t) {
 	packet.Participants = receivedPacket.Participants
 	packet.SequenceNumber = receivedPacket.SequenceNumber
@@ -95,6 +99,7 @@ func (packet *Packet_t ) merge_packets(receivedPacket Packet_t, pullQueueChan ch
 		log.Fatal("Participants list is empty")
 	}
 
+	// Kan dette gjøres utenfor funksjonen?
 	pushQueueChan <- receivedPacket.Orders
 	packet.Orders = <- pullQueueChan
 	//t = time.Since(t0).Seconds()
@@ -103,6 +108,7 @@ func (packet *Packet_t ) merge_packets(receivedPacket Packet_t, pullQueueChan ch
 	}
 }
 
+// Newer høres litt nors-engelsk ut, selvom det er riktig. Bytte navn?
 func (packet *Packet_t) newer_sequence_number(receivedSequenceNumber int ) bool {
 	if ( receivedSequenceNumber - packet.SequenceNumber ) > ( SEQUENCE_NUMBER_RANGE / 2 )  {
 		return  false
@@ -122,6 +128,7 @@ func (packet *Packet_t) print() {
 	print("Sequence #",packet.SequenceNumber, "\n")
 }
 
+// Orders er fortsatt misvisende med tanke på hva en UpdatePacket_t inneholder
 func new_packet(myID string, nFloors int, initOrders queueManager.UpdatePacket_t) (Packet_t) {
 	packet := Packet_t{}
 	packet.SequenceNumber = -1
@@ -149,7 +156,7 @@ func get_my_IP() string {
     return "invalidIP"
 }
 
-//Hvorfor ikke bare ta inn en hel packet?
+// Hvorfor ikke bare ta inn en hel packet?
 func calculate_next_sender(participants []string, lastSender string) string {
 	sort.Strings(participants)
 	nextSenderIndex := sort.SearchStrings(participants, lastSender) + 1
@@ -168,22 +175,23 @@ func calculate_next_sender(participants []string, lastSender string) string {
 	}
 }
 
+// Konsekvente med chan-navnene. Brukes waitgroup overalt?
 func Run(myID string, nFloors int, pullQueueChan chan queueManager.UpdatePacket_t, pushQueueChan chan queueManager.UpdatePacket_t, initialize sync.WaitGroup) {  //TODO: Dust navn; bør endres
-	initOrders := <-pullQueueChan //TODO: nytt navn
-	myPacket := new_packet(myID, nFloors,initOrders)
-	timeoutTimer := time.NewTimer(time.Millisecond * TIMEOUT_INTERVAL)
-	transmitTimer := time.NewTimer(time.Millisecond * SEND_INTERVAL)
-	iAmAloneTimer := time.NewTimer(time.Millisecond * TIMEOUT_INTERVAL * 5)
+	initOrders := <-pullQueueChan // TODO: nytt navn? Ja. SystemInfo? System
+	myPacket := new_packet(myID, nFloors,initOrders) // Liker ikke packet så mye lenger. Hva med datagram eller noe?
+	timeoutTimer := time.NewTimer(time.Millisecond * TIMEOUT_INTERVAL) // Denne er det ikke opplagt hva gjør. transmitWindowTimer?
+	transmitTimer := time.NewTimer(time.Millisecond * SEND_INTERVAL) 	// repeatedTransmitTimer? 
+	iAmAloneTimer := time.NewTimer(time.Millisecond * TIMEOUT_INTERVAL * 5) // Denne tenker jeg at brukes til å oppdage at heisen er alene.
 	iAmActiveSender := true
 
-	sendChan := make(chan Packet_t,1)
-	receiveChan := make(chan Packet_t,1)
-	quit := make(chan int, 2)
+	sendChan := make(chan Packet_t,1) 		// transmitChan?
+	receiveChan := make(chan Packet_t,1)	
+	quit := make(chan int, 2)				// brukes denne?
 
-	go receive_message(receiveChan, quit)
-	go send_message(sendChan, quit)
+	go receive_message(receiveChan, quit)	// vi bør kanskje være konsekvente - message eller packet? Eller noe annet?
+	go send_message(sendChan, quit)			// transmit_?
 
-	 fails := 0
+	 fails := 0	// brukes denne?
 
 
 	 //var sum1 float64 = 0
@@ -193,7 +201,7 @@ func Run(myID string, nFloors int, pullQueueChan chan queueManager.UpdatePacket_
 	for {
 		myPacket.NextSender = calculate_next_sender(myPacket.Participants, myID)  //TODO: bør endres slik at den kun tar inn ett argument
 		
-		logger(myPacket,fails)
+		logger(myPacket,fails) // Brukes denne?
 		
 		// if int(counter) % 50 == 0 { 
 		// 	println("Average RTT: ",sum/counter)
@@ -255,8 +263,8 @@ func Run(myID string, nFloors int, pullQueueChan chan queueManager.UpdatePacket_
 							shouldBreak = true
 						}
 					case <- iAmAloneTimer.C: 
-						var emptyList []string   //TODO: litt dust løsning
-						myPacket.Participants = append(emptyList, myID ) //Sletter hele listen, mulig bug her
+						var emptyList []string   //TODO: litt dust løsning. Hvorfor trenger vi den?
+						myPacket.Participants = append(emptyList, myID ) //Sletter hele listen, mulig bug her. Hva med Participants = nil; Participants = append(Participants, myID)?
 						iAmActiveSender = true
 						fails++
 						println("I am alone")
@@ -312,7 +320,7 @@ func receive_message(transmitChannel chan Packet_t, quit chan int) {
 						log.Print("Could not decode message: ", err)
 						continue
 					}
-					transmitChannel <- mssg 
+					transmitChannel <- mssg //mssg?
 			}
 		}
 }
