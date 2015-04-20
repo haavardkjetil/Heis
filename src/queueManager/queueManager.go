@@ -61,8 +61,8 @@ type Order_t struct{
 }
 
 
-func Run(localIP string, 														//TX: localIP -> localID
-					numFloors int, 												//TX: Bør bruke samme navnekonvensjon på alle channels
+func Run(localIP string, 
+					numFloors int, 
 					networkReceive, networkTransmit chan UpdatePacket_t, 
 					statusChan chan ElevatorStatus_t, 
 	      			buttonSensorChan_pull chan driver.Button_t,
@@ -72,7 +72,7 @@ func Run(localIP string, 														//TX: localIP -> localID
 					positionChan chan int){
 
 	numPositions := numFloors*2-1
-	currentPosition := <- positionChan                                   //TX: Kømodulen opperer på både globale (remote heiser) og lokal. Burde derfor gjøre skillet mellom hva som er lokalt og hva som er globalt tydligere
+	currentPosition := <- positionChan
 	currentStatus := UNKNOWN
 
 	var globalOrders = make( [][]bool, numFloors)
@@ -98,9 +98,7 @@ func Run(localIP string, 														//TX: localIP -> localID
 			var newOrder Order_t
 			newOrder.Operation = DELETE
 			newOrder.Button.Floor = floorServed
-			newOrders = append(newOrders, newOrder)    //TX: newOrder og NewOrders er veldig like navn. 
-													   //Og: burde finne et nytt navn for newOrders fordi operasjonen DELETE ikke er en ny ordre. N
-													   //Navneforslag: newOrders -> queuedOrderUpdates , newOrder -> newOrderUpdate
+			newOrders = append(newOrders, newOrder)
 
 		case currentPosition = <- positionChan:
 
@@ -132,22 +130,22 @@ func Run(localIP string, 														//TX: localIP -> localID
 				if newOrder.Operation == ADD{
 					shouldRedistribute = true
 					add_order(&localElevator, newOrder.Button, globalOrders)
-				}else{																	//TX: Hva med: " }else if newOrder.Operation == DELETE{  " ?
+				}else{
 					delete_order(&localElevator, newOrder.Button.Floor, globalOrders)
 				}
 			}
 			update_lights(numFloors, globalOrders, localElevator.Orders, buttonLampChan_push)
 			newOrders = nil
-			networkUpdate.Elevators[localIP] = localElevator							//TX: Kanskje hva som er global og hva som er lokal blir sammenblandet? litt usikker, kan vi diskutere det?
+			networkUpdate.Elevators[localIP] = localElevator
 			if shouldRedistribute{
-				redistribute_orders(networkUpdate.Elevators, globalOrders) //  |
-			}															   //  | > Disse linjene skjønner jeg ikke helt hva gjør, hvorfor må copy_bool_matrix kjøres etter redistribute?
-																		   //  | > Bør endre navn slik at det er mer intuitivt
-			copy_bool_matrix(networkUpdate.GlobalOrders, globalOrders)     //  |
+				redistribute_orders(networkUpdate.Elevators, globalOrders)
+			}
+
+			copy_bool_matrix(networkUpdate.GlobalOrders, globalOrders)
 			networkTransmit <- networkUpdate
 
-			nextDestination := get_next_destination(networkUpdate.Elevators[localIP], numPositions)  //TX: Bør endre navn på networkUpdate hvis den brukes slik
-			destinationChan_push <- nextDestination                                                  //     networkUdate høres ut som kun har med kommunikasjon med nettverk å gjøre, men flere steder brukes den til andre ting - som her
+			nextDestination := get_next_destination(networkUpdate.Elevators[localIP], numPositions)
+			destinationChan_push <- nextDestination
 			if shouldPrint || true {
 				print_queues(networkUpdate.Elevators)
 
@@ -188,21 +186,26 @@ func update_lights(numFloors int, globalOrders, localOrders [][]bool, buttonLamp
 }
 
 func find_optimal_elevator(elevators map[string]Elevator_t, buttonCall ButtonCall_t, orderedFloor int) string {  
-	bestTime := Inf(1)
-	sortedIPs := make([]string, 0, len(elevators))    //TX:  IP -> ID
+	bestTime := math.MaxInt64
+	sortedIPs := make([]string, 0, len(elevators))
 	for elevatorIP := range elevators{
 		sortedIPs = append(sortedIPs, elevatorIP)
 	}
 	sort.Strings(sortedIPs)
 	bestElevator := sortedIPs[0]
+	//dir := "UP"
+	//if buttonCall == BUTTON_CALL_DOWN { dir = "DOWN" }
+	//Println("\nEvaluating order from floor ", orderedFloor, ", ", dir)
 	for _, elevatorIP := range sortedIPs {
 		elevator := elevators[elevatorIP]
 		elevStatus := elevator.Status
 		if elevStatus == UNKNOWN {continue}
 		tempOrders := make( [][]bool, elevator.NumFloors )
 		copy_bool_matrix(tempOrders, elevator.Orders) 
+		//Print(elevatorIP, ": preveious = ", calculate_cost(elevator.Position, elevator.Status, tempOrders))
 		tempOrders[orderedFloor][buttonCall] = true
-		newTravelTime, _ := calculate_cost(elevator.Position, elevator.Status, tempOrders)
+		newTravelTime := calculate_cost(elevator.Position, elevator.Status, tempOrders)
+		//Println(", new = ", newTravelTime)
 		if newTravelTime < bestTime {
 			bestTime = newTravelTime
 			bestElevator = elevatorIP
@@ -213,27 +216,27 @@ func find_optimal_elevator(elevators map[string]Elevator_t, buttonCall ButtonCal
 			}
 		}
 	}
+	//Println("Best elevator for ", orderedFloor, dir, ": ", bestElevator, ". Time: ", bestTime)
 	return bestElevator
 }
 
-func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders [][]bool) (float64, error) {
-	if initialPosition < 0 || initialPosition >= len(orders)*2-1{
-		return Inf(1), errors.New("Call to calculate_cost(): Initial position outside range.")
-	}
-	if initialStatus == UNKNOWN{
-		return Inf(1), nil
-	}
+func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders [][]bool) (int) {
 	numFloors := len(orders)
 	numPositions := numFloors*2-1
 	tempOrders := make( [][]bool, numFloors )
 	copy_bool_matrix(tempOrders, orders) 
-	var driveTime float64 = 0
-	var waitTime float64 = 0
-	var totalTime float64 = 0
-	var floorToFloorTime float64 = 2.2
-	var doorOpenTime float64 = 3
-	if (initialStatus == MOVING_UP || initialStatus == IDLE) {                 //TX: går det an å gjøre seksjonen mer oversiktlig?
-		var distanceTravelledUp float64 = 0
+	driveTime := 0
+	waitTime := 0
+	totalTime := 0
+	floorToFloorTime := 1
+	doorOpenTime := 3
+	passingFloorTime := 1
+	betweenFloorsTime := 1
+	if initialStatus == UNKNOWN{
+		return numFloors*(doorOpenTime + floorToFloorTime)*(passingFloorTime + betweenFloorsTime)*2
+	}
+	if (initialStatus == MOVING_UP || initialStatus == IDLE) {
+		distanceTravelledUp := 0
 		for position := initialPosition; position < numPositions; position++{
 			if position % 2 == 0{
 				floor := position/2
@@ -248,13 +251,13 @@ func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders 
 					driveTime += distanceTravelledUp*floorToFloorTime
 					distanceTravelledUp = 0
 				}
-				distanceTravelledUp += 0.1
+				distanceTravelledUp += passingFloorTime
 			}else{
-				distanceTravelledUp += 0.9
+				distanceTravelledUp += betweenFloorsTime
 			}
 		}
-		distanceTravelledUp -= 0.1
-		var distanceTravelledDown float64 = 0
+		distanceTravelledUp -= passingFloorTime
+		distanceTravelledDown := 0
 		for position := numPositions-1; position >= 0; position--{
 			if position % 2 == 0{
 				floor := position/2
@@ -267,12 +270,12 @@ func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders 
 					distanceTravelledDown = 0
 					distanceTravelledUp = 0
 				}
-				distanceTravelledDown += 0.1
+				distanceTravelledDown += passingFloorTime
 			}else{
-				distanceTravelledDown += 0.9
+				distanceTravelledDown += betweenFloorsTime
 			}
 		}
-		distanceTravelledDown -= 0.1
+		distanceTravelledDown -= passingFloorTime
 		for position := 0; position <= initialPosition; position++{
 			if position % 2 == 0{
 				floor := position/2
@@ -285,9 +288,9 @@ func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders 
 					distanceTravelledDown = 0
 					distanceTravelledUp = 0
 				}
-				distanceTravelledUp += 0.1
+				distanceTravelledUp += passingFloorTime
 			}else{
-				distanceTravelledUp += 0.9
+				distanceTravelledUp += betweenFloorsTime
 			}
 		}
 		totalTime = driveTime + waitTime	
@@ -296,7 +299,7 @@ func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders 
 	waitTime = 0
 	copy_bool_matrix(tempOrders, orders)
 	if (initialStatus == MOVING_DOWN || initialStatus == IDLE) {
-		var distanceTravelledDown float64 = 0
+		distanceTravelledDown := 0
 		for position := initialPosition; position >= 0; position--{
 			if position % 2 == 0{
 				floor := position/2
@@ -311,13 +314,13 @@ func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders 
 					driveTime += distanceTravelledDown*floorToFloorTime
 					distanceTravelledDown = 0
 				}
-				distanceTravelledDown += 0.1
+				distanceTravelledDown += passingFloorTime
 			}else{
-				distanceTravelledDown += 0.9
+				distanceTravelledDown += betweenFloorsTime
 			}
 		}
-		distanceTravelledDown -= 0.1
-		var distanceTravelledUp float64 = 0
+		distanceTravelledDown -= passingFloorTime
+		distanceTravelledUp := 0
 		for position := 0; position < numPositions; position++{
 			if position % 2 == 0{
 				floor := position/2
@@ -330,12 +333,12 @@ func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders 
 					distanceTravelledDown = 0
 					distanceTravelledUp = 0
 				}
-				distanceTravelledUp += 0.1
+				distanceTravelledUp += passingFloorTime
 			}else{
-				distanceTravelledUp += 0.9
+				distanceTravelledUp += betweenFloorsTime
 			}
 		}
-		distanceTravelledUp -= 0.1
+		distanceTravelledUp -= passingFloorTime
 		for position := numPositions-1; position >= initialPosition; position--{
 			if position % 2 == 0{
 				floor := position/2
@@ -348,9 +351,9 @@ func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders 
 					distanceTravelledDown = 0
 					distanceTravelledUp = 0
 				}
-				distanceTravelledDown += 0.1
+				distanceTravelledDown += passingFloorTime
 			}else{
-				distanceTravelledDown += 0.9
+				distanceTravelledDown += betweenFloorsTime
 			}
 		}
 		if initialStatus == IDLE {
@@ -360,7 +363,7 @@ func calculate_cost(initialPosition int, initialStatus ElevatorStatus_t, orders 
 			totalTime = driveTime + waitTime
 		}
 	}
-	return totalTime, nil
+	return totalTime
 }
 
 func redistribute_orders(elevators map[string]Elevator_t, sharedOrders [][]bool){
@@ -390,10 +393,10 @@ func get_next_destination(elevator Elevator_t, numPositions int) int {
 	orders := elevator.Orders
 	destinationUp := -1
 	destinationDown := -1
-	upTime := Inf(1)
-	downTime := Inf(1)
-	shouldDoSomething := false                                     					//TX: nytt navn?
-	if (initialStatus == MOVING_UP || initialStatus == IDLE) {                      //TX: går det an å gjøre seksjonen mer oversiktlig?
+	upTime := math.Inf(1)
+	downTime := math.Inf(1)
+	shouldDoSomething := false
+	if (initialStatus == MOVING_UP || initialStatus == IDLE) {
 		for position := initialPosition; position < numPositions; position++{
 			if position % 2 == 0{
 				floor := position/2
@@ -457,13 +460,12 @@ func get_next_destination(elevator Elevator_t, numPositions int) int {
 			}
 		}
 	}
-	if (shouldDoSomething && upTime < downTime) {return destinationUp}     //TX: if / else ?
+	if (shouldDoSomething && upTime < downTime) {return destinationUp}
 	return destinationDown
 }
 
-func merge_bool_matrix(dst, src [][]bool) bool {					//TX: unødvendig å ha "_bool_" i funksjonsnavnet; det fremgår av typene til argumentene
-	if dst == nil || src == nil || len(dst) != len(src){			//Og: er det nødvendig med en returverdi? har jo sjekk med log.fatal uansett, 
-																	//	  og returnerer true uansett hvis funksjonen fullfører, og returnverdien blir ikke brukt noen steder i programmet
+func merge_bool_matrix(dst, src [][]bool) bool {
+	if dst == nil || src == nil || len(dst) != len(src){
 		log.Fatal("len(dst) != len(src)")
 	}
 	for i := range src{
@@ -479,7 +481,7 @@ func merge_bool_matrix(dst, src [][]bool) bool {					//TX: unødvendig å ha "_b
 	return true
 }
 
-func copy_bool_matrix(dst, src [][]bool) bool { 				//TX: samme som for merge_bool_matrix
+func copy_bool_matrix(dst, src [][]bool) bool {
 	if len(dst) < len(src){
 		return false
 	}
@@ -509,7 +511,7 @@ func delete_order(source *Elevator_t, floor int, globalOrders [][]bool) error{
 func add_order(source *Elevator_t, activeButton driver.Button_t, globalOrders [][]bool) error{
 	floor := activeButton.Floor
 	if floor < 0 || floor >= source.NumFloors || floor >= len(globalOrders){
-		return errors.New("Call to add_order(): floor does not exist.")           // TX: Bør være konsekvent på om vi brukker errors og return eller log.Fatal()
+		return errors.New("Call to add_order(): floor does not exist.")
 	}
 
 	if activeButton.Type == driver.BUTTON_CALL_INSIDE{
@@ -553,8 +555,8 @@ func print_queues(elevators map[string]Elevator_t){
 	}
 	Println("")
 	for i := range elevatorList{
-		time, _ := calculate_cost(elevators[elevatorList[i]].Position, elevators[elevatorList[i]].Status, elevators[elevatorList[i]].Orders) 
-		Printf("Workload: %.1f", time)
+		time := calculate_cost(elevators[elevatorList[i]].Position, elevators[elevatorList[i]].Status, elevators[elevatorList[i]].Orders) 
+		Printf("Workload: %2.0f", (float64)(time))
 		Print(" [s]", "			")
 	}
 	Println("")
@@ -610,6 +612,183 @@ func print_queues(elevators map[string]Elevator_t){
 // 		}
 // 	}
 // 	return false
+// }
+
+
+// func find_optimal_elevator_float64(elevators map[string]Elevator_t, buttonCall ButtonCall_t, orderedFloor int) string {  
+// 	bestTime := math.Inf(1)
+// 	sortedIPs := make([]string, 0, len(elevators))
+// 	for elevatorIP := range elevators{
+// 		sortedIPs = append(sortedIPs, elevatorIP)
+// 	}
+// 	sort.Strings(sortedIPs)
+// 	bestElevator := sortedIPs[0]
+// 	for _, elevatorIP := range sortedIPs {
+// 		elevator := elevators[elevatorIP]
+// 		elevStatus := elevator.Status
+// 		if elevStatus == UNKNOWN {continue}
+// 		tempOrders := make( [][]bool, elevator.NumFloors )
+// 		copy_bool_matrix(tempOrders, elevator.Orders) 
+// 		tempOrders[orderedFloor][buttonCall] = true
+// 		newTravelTime, _ := calculate_cost(elevator.Position, elevator.Status, tempOrders)
+// 		if newTravelTime < bestTime {
+// 			bestTime = newTravelTime
+// 			bestElevator = elevatorIP
+// 		}else if newTravelTime == bestTime {
+// 			if elevatorIP < bestElevator{
+// 				bestElevator = elevatorIP
+// 				bestTime = newTravelTime
+// 			}
+// 		}
+// 	}
+// 	return bestElevator
+// }
+
+// func calculate_cost_float64(initialPosition int, initialStatus ElevatorStatus_t, orders [][]bool) (float64, error) {
+// 	if initialPosition < 0 || initialPosition >= len(orders)*2-1{
+// 		return math.Inf(1), errors.New("Call to calculate_cost(): Initial position outside range.")
+// 	}
+// 	if initialStatus == UNKNOWN{
+// 		return math.Inf(1), nil
+// 	}
+// 	numFloors := len(orders)
+// 	numPositions := numFloors*2-1
+// 	tempOrders := make( [][]bool, numFloors )
+// 	copy_bool_matrix(tempOrders, orders) 
+// 	var driveTime float64 = 0
+// 	var waitTime float64 = 0
+// 	var totalTime float64 = 0
+// 	var floorToFloorTime float64 = 2.2
+// 	var doorOpenTime float64 = 3
+// 	if (initialStatus == MOVING_UP || initialStatus == IDLE) {
+// 		var distanceTravelledUp float64 = 0
+// 		for position := initialPosition; position < numPositions; position++{
+// 			if position % 2 == 0{
+// 				floor := position/2
+// 				if tempOrders[floor][BUTTON_CALL_UP] || tempOrders[floor][BUTTON_CALL_INSIDE] || ( floor == numFloors-1 && tempOrders[floor][BUTTON_CALL_DOWN]){
+// 					driveTime += distanceTravelledUp*floorToFloorTime
+// 					waitTime += doorOpenTime
+// 					tempOrders[floor][BUTTON_CALL_UP] = false
+// 					tempOrders[floor][BUTTON_CALL_DOWN] = false
+// 					tempOrders[floor][BUTTON_CALL_INSIDE] = false
+// 					distanceTravelledUp = 0
+// 				}else if position == (initialPosition + 1){
+// 					driveTime += distanceTravelledUp*floorToFloorTime
+// 					distanceTravelledUp = 0
+// 				}
+// 				distanceTravelledUp += 0.1
+// 			}else{
+// 				distanceTravelledUp += 0.9
+// 			}
+// 		}
+// 		distanceTravelledUp -= 0.1
+// 		var distanceTravelledDown float64 = 0
+// 		for position := numPositions-1; position >= 0; position--{
+// 			if position % 2 == 0{
+// 				floor := position/2
+// 				if tempOrders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_INSIDE] {
+// 					driveTime += Abs(distanceTravelledDown - distanceTravelledUp)*floorToFloorTime
+// 					waitTime += doorOpenTime
+// 					tempOrders[floor][BUTTON_CALL_UP] = false
+// 					tempOrders[floor][BUTTON_CALL_DOWN] = false
+// 					tempOrders[floor][BUTTON_CALL_INSIDE] = false
+// 					distanceTravelledDown = 0
+// 					distanceTravelledUp = 0
+// 				}
+// 				distanceTravelledDown += 0.1
+// 			}else{
+// 				distanceTravelledDown += 0.9
+// 			}
+// 		}
+// 		distanceTravelledDown -= 0.1
+// 		for position := 0; position <= initialPosition; position++{
+// 			if position % 2 == 0{
+// 				floor := position/2
+// 				if tempOrders[floor][BUTTON_CALL_UP] || tempOrders[floor][BUTTON_CALL_INSIDE] {
+// 					driveTime += Abs(distanceTravelledUp - distanceTravelledDown)*floorToFloorTime
+// 					waitTime += doorOpenTime
+// 					tempOrders[floor][BUTTON_CALL_UP] = false
+// 					tempOrders[floor][BUTTON_CALL_DOWN] = false
+// 					tempOrders[floor][BUTTON_CALL_INSIDE] = false
+// 					distanceTravelledDown = 0
+// 					distanceTravelledUp = 0
+// 				}
+// 				distanceTravelledUp += 0.1
+// 			}else{
+// 				distanceTravelledUp += 0.9
+// 			}
+// 		}
+// 		totalTime = driveTime + waitTime	
+// 	}
+// 	driveTime = 0
+// 	waitTime = 0
+// 	copy_bool_matrix(tempOrders, orders)
+// 	if (initialStatus == MOVING_DOWN || initialStatus == IDLE) {
+// 		var distanceTravelledDown float64 = 0
+// 		for position := initialPosition; position >= 0; position--{
+// 			if position % 2 == 0{
+// 				floor := position/2
+// 				if tempOrders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_INSIDE] || ( (floor == 0) && tempOrders[floor][BUTTON_CALL_UP]){
+// 					driveTime += distanceTravelledDown*floorToFloorTime
+// 					waitTime += doorOpenTime
+// 					tempOrders[floor][BUTTON_CALL_UP] = false
+// 					tempOrders[floor][BUTTON_CALL_DOWN] = false
+// 					tempOrders[floor][BUTTON_CALL_INSIDE] = false
+// 					distanceTravelledDown = 0
+// 				}else if position == (initialPosition - 1){
+// 					driveTime += distanceTravelledDown*floorToFloorTime
+// 					distanceTravelledDown = 0
+// 				}
+// 				distanceTravelledDown += 0.1
+// 			}else{
+// 				distanceTravelledDown += 0.9
+// 			}
+// 		}
+// 		distanceTravelledDown -= 0.1
+// 		var distanceTravelledUp float64 = 0
+// 		for position := 0; position < numPositions; position++{
+// 			if position % 2 == 0{
+// 				floor := position/2
+// 				if tempOrders[floor][BUTTON_CALL_UP] || tempOrders[floor][BUTTON_CALL_INSIDE] {
+// 					driveTime += Abs(distanceTravelledUp - distanceTravelledDown)*floorToFloorTime
+// 					waitTime += doorOpenTime
+// 					tempOrders[floor][BUTTON_CALL_UP] = false
+// 					tempOrders[floor][BUTTON_CALL_DOWN] = false
+// 					tempOrders[floor][BUTTON_CALL_INSIDE] = false
+// 					distanceTravelledDown = 0
+// 					distanceTravelledUp = 0
+// 				}
+// 				distanceTravelledUp += 0.1
+// 			}else{
+// 				distanceTravelledUp += 0.9
+// 			}
+// 		}
+// 		distanceTravelledUp -= 0.1
+// 		for position := numPositions-1; position >= initialPosition; position--{
+// 			if position % 2 == 0{
+// 				floor := position/2
+// 				if tempOrders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_INSIDE] {
+// 					driveTime += Abs(distanceTravelledDown - distanceTravelledUp)*floorToFloorTime
+// 					waitTime += doorOpenTime
+// 					tempOrders[floor][BUTTON_CALL_UP] = false
+// 					tempOrders[floor][BUTTON_CALL_DOWN] = false
+// 					tempOrders[floor][BUTTON_CALL_INSIDE] = false
+// 					distanceTravelledDown = 0
+// 					distanceTravelledUp = 0
+// 				}
+// 				distanceTravelledDown += 0.1
+// 			}else{
+// 				distanceTravelledDown += 0.9
+// 			}
+// 		}
+// 		if initialStatus == IDLE {
+// 			// dersom de er like returneres den siste (tiden nedover).
+// 			totalTime = Min( totalTime, driveTime + waitTime )
+// 		}else{
+// 			totalTime = driveTime + waitTime
+// 		}
+// 	}
+// 	return totalTime, nil
 // }
 
 // func compare_bool_matrix(a,b [][]bool) bool {
