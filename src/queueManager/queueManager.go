@@ -415,6 +415,7 @@ func Max(a, b int) int {
 	return b
 }
 
+// Trenger ikke numPositions. Kan dessuten være medlemsfunksjon!
 func get_next_destination(elevator Elevator_t, numPositions int) int {
 	initialPosition := elevator.Position
 	initialStatus := elevator.Status
@@ -488,10 +489,14 @@ func get_next_destination(elevator Elevator_t, numPositions int) int {
 			}
 		}
 	}
-	if (shouldDoSomething && upTime < downTime) {return destinationUp}
-	return destinationDown
+
+	//Kan fjerne shoudDoSomething ja:
+	if (shouldDoSomething && upTime < downTime) {return destinationUp} // Kan istedet skrive if (upTime =! -1 || downTime != -1) && upTime < downTime
+	return destinationDown // if else
 }
 
+
+// Trenger ikke presisere bool. Kan fjerne logfatal mot å returnere false istedet
 func merge_bool_matrix(dst, src [][]bool) bool {
 	if dst == nil || src == nil || len(dst) != len(src){
 		log.Fatal("len(dst) != len(src)")
@@ -509,6 +514,8 @@ func merge_bool_matrix(dst, src [][]bool) bool {
 	return true
 }
 
+
+// trenger ikke presisere bool.
 func copy_bool_matrix(dst, src [][]bool) bool {
 	if len(dst) < len(src){
 		return false
@@ -518,13 +525,12 @@ func copy_bool_matrix(dst, src [][]bool) bool {
 		copy(tempList, src[i])
 		dst[i] = make([]bool, len(src[i]))
 		copy(dst[i], tempList)
-		// dst[i] = make([]bool, len(src[i]))
-		// copy(dst[i], src[i])
 	}
 	return true
 }
 
 
+// Trenger ikke presisere elev her heller da eller?
 func copy_elev_map(dst, src map[string]Elevator_t){
 	for key, _ := range dst{
 		delete(dst, key)
@@ -535,6 +541,7 @@ func copy_elev_map(dst, src map[string]Elevator_t){
 	}
 }
 
+// kan fjerne error her og kanskje.
 func delete_order(source *Elevator_t, floor int, globalOrders [][]bool) error{
 	if floor < 0 || floor >= source.NumFloors || floor >= len(globalOrders){
 		return errors.New("Call to add_order(): floor does not exist.")
@@ -547,6 +554,7 @@ func delete_order(source *Elevator_t, floor int, globalOrders [][]bool) error{
 	return nil
 }
 
+// Kan fjerne error og logFatal.
 func add_order(source *Elevator_t, activeButton driver.Button_t, globalOrders [][]bool) error{
 	floor := activeButton.Floor
 	if floor < 0 || floor >= source.NumFloors || floor >= len(globalOrders){
