@@ -5,7 +5,6 @@ import (
 "driver"
 "time"
 "log"
-"sync"
 )
 
 func Run(numFloors int, 
@@ -15,8 +14,7 @@ func Run(numFloors int,
 		statusChan_push chan queueManager.ElevatorStatus_t, 
 		floorSensorChan_pull chan int, 
 		motorDirChan_push chan driver.MotorDirection_t, 
-		doorLampChan_push chan bool,
-		initialize sync.WaitGroup){
+		doorLampChan_push chan bool){
 
 	numPositions := numFloors*2-1
 	status := queueManager.UNKNOWN
@@ -31,7 +29,6 @@ func Run(numFloors int,
 	status, currentPosition = reinitialize(driver.DIR_DOWN, motorDirChan_push, doorLampChan_push, floorSensorChan_pull, -1, numPositions)
 	positionUpdate_push <- currentPosition
 	statusChan_push <- status
-	initialize.Done()
 
 	for{
 		//TODO: TENGER vi dette. Også er UNKNOWN state unødvendig?

@@ -2,11 +2,10 @@
 
 package network
 
-import (
-"queueManager"
+import "queueManager"
 
+import (
 "net"
-//"fmt"
 "log"
 "os"
 "strconv"
@@ -14,15 +13,7 @@ import (
 "encoding/gob"
 "sort"
 "time"
-"sync"
 )
-
-// TODO HOVEDLINJER:
-/*
-"goroutine, index out of range, participants = 0" feilen er der fortsatt
-
-
-*/
 
 var t float64
 // TODO: endre navn på funksjoner
@@ -176,7 +167,7 @@ func calculate_next_sender(participants []string, lastSender string) string {
 }
 
 // Konsekvente med chan-navnene. Brukes waitgroup overalt?
-func Run(myID string, nFloors int, pullQueueChan chan queueManager.UpdatePacket_t, pushQueueChan chan queueManager.UpdatePacket_t, initialize sync.WaitGroup) {  //TODO: Dust navn; bør endres
+func Run(myID string, nFloors int, pullQueueChan chan queueManager.UpdatePacket_t, pushQueueChan chan queueManager.UpdatePacket_t) {  //TODO: Dust navn; bør endres
 	initOrders := <-pullQueueChan // TODO: nytt navn? Ja. SystemInfo? System
 	myPacket := new_packet(myID, nFloors,initOrders) // Liker ikke packet så mye lenger. Hva med datagram eller noe?
 	timeoutTimer := time.NewTimer(time.Millisecond * TIMEOUT_INTERVAL) // Denne er det ikke opplagt hva gjør. transmitWindowTimer?
@@ -192,10 +183,6 @@ func Run(myID string, nFloors int, pullQueueChan chan queueManager.UpdatePacket_
 	go send_message(sendChan, quit)			// transmit_?
 
 	 fails := 0	// brukes denne?
-
-
-	 //var sum1 float64 = 0
-	initialize.Done()
 
 
 	for {
