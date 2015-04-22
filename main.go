@@ -1,51 +1,72 @@
 package main
 
 import(
-"network"
 "driver"
-//"fmt"
+"stateMachine"
+"queueManager"
+"network"
+)
+
+import(
+"sync"
+"net"
 "log"
 )
 
+// Navneforslag:
+// newtorkToQueue_c
+// queueToNetwork_c
+// ...FromNetwork  , ....ToNetWork
+
+
+
+
 func main() {
-	testNetwork()
+	var shutdown sync.WaitGroup
+
+	numFloors := driver.N_FLOORS
+
+	queueToNetwork_c := make(chan queueManager.UpdatePacket_t)
+	networkToQueue_c := make(chan queueManager.UpdatePacket_t)
+
+	buttonLamp_c := make(chan driver.ButtonLampUpdate_t, numFloors*3)
+	buttonSensor_c := make(chan driver.Button_t,10)
+	floorSensor_c := make(chan int,10)
+	motorDir_c := make(chan driver.MotorDirection_t,10)
+	doorLamp_c := make(chan bool,10)
+
+	destination_c := make(chan int,10) 
+	status_c := make(chan queueManager.ElevatorStatus_t,10)
+	floorServed_c := make(chan int,10)
+	position_c := make(chan int,10)
+
+	shutdown.Add(1)
+
+
+	go network.Run( getLocalID(),4,networkToQueue_c,queueToNetwork_c)
+
+	go queueManager.Run( getLocalID(), numFloors, queueToNetwork_c, networkToQueue_c, status_c, buttonSensor_c, buttonLamp_c, floorServed_c, destination_c, position_c)
+
+	go stateMachine.Run(numFloors, destination_c,floorServed_c, position_c, status_c, floorSensor_c, motorDir_c, doorLamp_c)
+
+	go driver.Run(buttonLamp_c, buttonSensor_c, floorSensor_c, motorDir_c, doorLamp_c)
+
+	shutdown.Wait()
 }
 
 
-func testNetwork(){
-    network.Run(4)
+func getLocalID() string {
+	addrs, err := net.InterfaceAddrs()
+    	if err != nil {
+        	log.Fatal(err)
+         }
+        for _, address := range addrs {
+        	if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+            	if ipnet.IP.To4() != nil {
+                	return ipnet.IP.String()
+                }
 
-
-	// transmitChannel := make(chan network.Packet,5)
-	// go network.ReceiveMessage(transmitChannel)
-	// for {
-	// 	message := <- transmitChannel
-	// 	fmt.Println(message.Type)
-	// 	fmt.Println(message.Postition)
-	// }
-}
-
-func testIO() {
-	// Initialize hardware
-    if !driver.Init() {
-        log.Fatal("Unable to initialize elevator hardware!")
-    }
-
-    println("Press STOP button to stop elevator and exit program.")
-    driver.Set_motor_direction(driver.DIR_DOWN)
-
-    for {
-        // Change direction when we reach top/bottom floor
-    	if driver.Get_floor_sensor_signal() == 3 {
-            driver.Set_motor_direction(driver.DIR_DOWN)
-        } else if driver.Get_floor_sensor_signal() == 0 {
-            driver.Set_motor_direction(driver.DIR_UP)
+            }
         }
-
-        // Stop elevator and exit program if the stop button is pressed
-        if driver.Get_stop_signal() {
-        	driver.Set_motor_direction(driver.DIR_STOP)
-            break
-        }
-    }
+    return "invalidID"
 }

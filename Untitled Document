@@ -1,0 +1,12 @@
+TODO:
+kømodul: Oppover og nedoverknapper gir feilmelding. Må legge sette lys på knappene. Klarer ikke printe køsystem (mappet er tomt)
+Insideknappene fungerer
+
+nettverk: lengde på participants = 0 => gir index out of range
+
+statemACHINE: timeren som skal sjekke om "elevator move to slowly" fungerer ikke helt (tror den fungerer oppover men ikke nedover)
+
+
+kjør run.sh med driverStateMachineTest (ikke main) for å sette igang systemet.
+
+
