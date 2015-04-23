@@ -32,14 +32,6 @@ func init_IO() bool {
 	if (int(C.io_init()) == 0) {
 		return false
 	} 
-	for etg := 0; etg < N_FLOORS; etg++ {
-		if (etg != 0) {
-			set_button_lamp(Button_t{BUTTON_CALL_DOWN, etg}, false)
-		}	
-		if (etg != N_FLOORS - 1) {
-			set_button_lamp(Button_t{BUTTON_CALL_UP, etg}, false)
-		}
-	}
 	set_stop_lamp(0)
 	set_door_lamp(false)
 	set_floor_indicator(0)

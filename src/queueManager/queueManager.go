@@ -76,7 +76,7 @@ func Run(localID string,
 	globalElevators := make( map[string]Elevator_t )
 	globalElevators[localID] = make_elevator(numFloors, localPosition, localStatus)
 
-	get_backup(BACKUP_FILE_NAME, globalElevators[localID].Orders)
+	get_backup(BACKUP_FILE_NAME, globalElevators[localID].Orders, globalOrders)
 	queueToNetwork_c <- Datagram_t{ globalElevators, globalOrders}
 
 	numElevators := len(globalElevators)
@@ -488,7 +488,7 @@ func save_backup(fileName string, orders [][]bool){
     f.Sync()
 }
 
-func get_backup(fileName string, orders [][]bool){
+func get_backup(fileName string, localOrders, globalOrders [][]bool){
 	f, err := os.Open(fileName)
     if err != nil {
 		return
@@ -503,8 +503,8 @@ func get_backup(fileName string, orders [][]bool){
 		return
 	}
 	readBuffer.Write(byteBuffer)
-	var tempOrders = make([][]bool, len(orders))
-	for floor := 0; floor < len(orders); floor++{
+	var tempOrders = make([][]bool, len(localOrders))
+	for floor := 0; floor < len(localOrders); floor++{
 		tempOrders[floor] = make([]bool, 3)
 	}
 
@@ -512,10 +512,12 @@ func get_backup(fileName string, orders [][]bool){
 	if err != nil {
 		return
 	}
-	for floor := 0; floor < len(orders); floor++ {
-		orders[floor][BUTTON_CALL_UP] = orders[floor][BUTTON_CALL_UP] || tempOrders[floor][BUTTON_CALL_UP])
-		orders[floor][BUTTON_CALL_DOWN] = orders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_DOWN])
-		orders[floor][BUTTON_CALL_INSIDE] = (orders[floor][BUTTON_CALL_INSIDE] || tempOrders[floor][BUTTON_CALL_INSIDE])
+	for floor := 0; floor < len(localOrders); floor++ {
+		globalOrders[floor][BUTTON_CALL_UP] = (localOrders[floor][BUTTON_CALL_UP] || tempOrders[floor][BUTTON_CALL_UP])
+		globalOrders[floor][BUTTON_CALL_DOWN] = (localOrders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_DOWN])
+		localOrders[floor][BUTTON_CALL_INSIDE] = (localOrders[floor][BUTTON_CALL_INSIDE] || tempOrders[floor][BUTTON_CALL_INSIDE])
+		localOrders[floor][BUTTON_CALL_UP] = globalOrders[floor][BUTTON_CALL_UP]
+		localOrders[floor][BUTTON_CALL_DOWN] = globalOrders[floor][BUTTON_CALL_DOWN]
 	}
 }
 
