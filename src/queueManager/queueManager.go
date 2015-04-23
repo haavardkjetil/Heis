@@ -513,8 +513,8 @@ func get_backup(fileName string, orders [][]bool){
 		return
 	}
 	for floor := 0; floor < len(orders); floor++ {
-		orders[floor][BUTTON_CALL_UP] = false
-		orders[floor][BUTTON_CALL_DOWN] = false
+		orders[floor][BUTTON_CALL_UP] = orders[floor][BUTTON_CALL_UP] || tempOrders[floor][BUTTON_CALL_UP])
+		orders[floor][BUTTON_CALL_DOWN] = orders[floor][BUTTON_CALL_DOWN] || tempOrders[floor][BUTTON_CALL_DOWN])
 		orders[floor][BUTTON_CALL_INSIDE] = (orders[floor][BUTTON_CALL_INSIDE] || tempOrders[floor][BUTTON_CALL_INSIDE])
 	}
 }
