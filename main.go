@@ -8,55 +8,42 @@ import(
 )
 
 import(
-"sync"
 "net"
 "log"
+"sync"
 )
-
-// Navneforslag:
-// newtorkToQueueChan
-// queueToNetworkChan
 
 func main() {
 	var shutdown sync.WaitGroup
-	var initialize sync.WaitGroup
-
 
 	numFloors := driver.N_FLOORS
-	networkReceive := make(chan queueManager.UpdatePacket_t)
-	networkTransmit := make(chan queueManager.UpdatePacket_t)
 
-	buttonLampChan := make(chan driver.ButtonLampUpdate_t, numFloors*3)
-	buttonSensorChan := make(chan driver.Button_t,10)
-	floorSensorChan := make(chan int,10)
-	motorDirChan := make(chan driver.MotorDirection_t,10)
-	doorLampChan := make(chan bool,10)
+	queueToNetwork_c := make(chan queueManager.Datagram_t)
+	networkToQueue_c := make(chan queueManager.Datagram_t)
 
-	destinationChan := make(chan int,10) 
-	statusChan := make(chan queueManager.ElevatorStatus_t,10)
-	floorServed := make(chan int,10)
-	positionChan := make(chan int,10)
+	buttonLamp_c := make(chan driver.ButtonLampUpdate_t, numFloors*3)
+	buttonSensor_c := make(chan driver.Button_t,10)
+	floorSensor_c := make(chan int,10)
+	motorDir_c := make(chan driver.MotorDirection_t,10)
+	doorLamp_c := make(chan bool,10)
 
-	shutdown.Add(4)
-	//TODO: inkrementer her
-	initialize.Add(3)
+	destination_c := make(chan int,10) 
+	status_c := make(chan stateMachine.StatusUpdate_t,10)
 
-	go network.Run( getLocalID(),4,networkTransmit,networkReceive, initialize)
+	shutdown.Add(1)
 
-	//TODO: Legg til initialize i queueManager også
-	go queueManager.Run( getLocalID(), numFloors, networkReceive, networkTransmit, statusChan, buttonSensorChan, buttonLampChan, floorServed, destinationChan, positionChan)
 
-	go stateMachine.Run(numFloors, destinationChan,floorServed, positionChan, statusChan, floorSensorChan, motorDirChan, doorLampChan, initialize )
+	go network.Run( getLocalID(),4,networkToQueue_c,queueToNetwork_c)
 
-	go driver.Run(buttonLampChan, buttonSensorChan, floorSensorChan, motorDirChan, doorLampChan, initialize )
-	
-	initialize.Wait()
-	println("System initialized")
+	go queueManager.Run( getLocalID(), numFloors, queueToNetwork_c, networkToQueue_c, status_c, buttonSensor_c, buttonLamp_c, destination_c)
+
+	go stateMachine.Run(numFloors, destination_c, status_c, floorSensor_c, motorDir_c, doorLamp_c)
+
+	go driver.Run(buttonLamp_c, buttonSensor_c, floorSensor_c, motorDir_c, doorLamp_c)
+
 
 	shutdown.Wait()
-	println("System is shutting down")
 }
-
 
 func getLocalID() string {
 	addrs, err := net.InterfaceAddrs()
@@ -72,5 +59,8 @@ func getLocalID() string {
 
             }
         }
+   	log.Fatal("could not resolve ID")
     return "invalidID"
 }
+
+

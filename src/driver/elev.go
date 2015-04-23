@@ -3,7 +3,6 @@ package driver
 import(
 "log"
 "time"
-"sync"
 )
 
 type ButtonType_t int
@@ -18,7 +17,7 @@ type Button_t struct {
 	Floor int
 }
 
-type ButtonLampUpdate_t struct {  //TODO: endre på navn
+type ButtonLampUpdate_t struct {
 	Button Button_t
 	Value bool
 }
@@ -32,32 +31,27 @@ const(
 	DIR_UP
 )
 
-func Run( buttonLampChan_pull chan ButtonLampUpdate_t,
-	      buttonSensorChan_push chan Button_t,
-	      floorSensorChan_push chan int,
-	      //floorIndicatorChan_pull chan int,
-	      motorDirChan_pull chan MotorDirection_t,
-	      doorLampChan_pull chan bool,
-	      initialize sync.WaitGroup) {
+func Run( buttonLamp_c chan ButtonLampUpdate_t,
+	      buttonSensor_c chan Button_t,
+	      floorSensor_c chan int,
+	      motorDir_c chan MotorDirection_t,
+	      doorLamp_c chan bool) {
 	
 	if !init_IO(){
 		log.Fatal("Could not initialize I/O driver")
 	}
-	initialize.Done()
 
-	go poll_floor_sensor( floorSensorChan_push )
-	go poll_button_signal( buttonSensorChan_push ) // Mulig jeg har misforstått, men burde ikke disse være pull?
+	go poll_floor_sensor( floorSensor_c )
+	go poll_button_signal( buttonSensor_c )
 
 	for{
 		select{
-			case dir := <- motorDirChan_pull:
+			case dir := <- motorDir_c:
 				set_motor_direction( dir )
-			case value := <- doorLampChan_pull:
+			case value := <- doorLamp_c:
 				set_door_lamp( value )
-			case buttonLampUpdate := <- buttonLampChan_pull:
+			case buttonLampUpdate := <- buttonLamp_c:
 				set_button_lamp( buttonLampUpdate.Button, buttonLampUpdate.Value )
-			// case floor := <- floorIndicatorChan_pull:
-			// 	set_floor_indicator ( floor )
 			default:
 				time.Sleep(time.Millisecond)
 		}
@@ -66,8 +60,7 @@ func Run( buttonLampChan_pull chan ButtonLampUpdate_t,
 
 }
 
-//pull/push
-func poll_floor_sensor(floorChan chan int) int{  //TODO: hva er best navn: poll_floor_sensor() eller check_floor_sensor. poll
+func poll_floor_sensor(floorChan chan int) int{
 	currentSensorSignal := -1
 	for{
 		for i := 0; i<N_FLOORS; i++ {
@@ -81,7 +74,7 @@ func poll_floor_sensor(floorChan chan int) int{  //TODO: hva er best navn: poll_
 	}
 }
 
-func poll_button_signal(buttonChan chan Button_t){ // pull/push
+func poll_button_signal(buttonChan chan Button_t){
 	var currentSensorSignal = [N_FLOORS][3]bool{}
 
 	for{

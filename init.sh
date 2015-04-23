@@ -11,7 +11,5 @@ cd Heis
 
 xterm -e sh initLogger.sh &
 
-
-
-
+chmod +777 run.sh
 

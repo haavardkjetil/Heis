@@ -28,7 +28,6 @@ var (
 	}
 )
 
-//TODO: LEgg til sjekk om den er initialisert
 func init_IO() bool {
 	if (int(C.io_init()) == 0) {
 		return false
@@ -40,7 +39,6 @@ func init_IO() bool {
 		if (etg != N_FLOORS - 1) {
 			set_button_lamp(Button_t{BUTTON_CALL_UP, etg}, false)
 		}
-		set_button_lamp(Button_t{BUTTON_CALL_INSIDE, etg}, false)
 	}
 	set_stop_lamp(0)
 	set_door_lamp(false)
@@ -90,16 +88,14 @@ func set_floor_indicator(floor int) {
 
 func set_button_lamp(button Button_t, value bool) {
 	if button.Floor < 0 || button.Floor >= N_FLOORS {
-		log.Fatal( "Invalid floor number")
+		return
 	}
 	if ((button.Type == BUTTON_CALL_UP && button.Floor == N_FLOORS - 1) || (button.Type == BUTTON_CALL_DOWN && button.Floor == 0)){
-		log.Fatal( "Invalid combination of floor and button in set_button_lamp")
+		return
 	}
-
 	if !(button.Type == BUTTON_CALL_UP || button.Type == BUTTON_CALL_DOWN || button.Type == BUTTON_CALL_INSIDE) {
-		log.Fatal( "Invalid argument; button type")
+		return
 	}
-
 	if value {
 		C.io_set_bit(C.int(lampChannelMatrix[button.Floor][button.Type]))
 	}else {
@@ -138,14 +134,10 @@ func get_floor_sensor_signal() int{
 
 func get_button_signal(button Button_t) bool {
 	if button.Floor < 0 || button.Floor >= N_FLOORS {
-		log.Fatal( "Invalid floor number")
+		return false
 	}
 	if ((button.Type == BUTTON_CALL_UP && button.Floor == N_FLOORS - 1) || (button.Type == BUTTON_CALL_DOWN && button.Floor == 0)){
-		log.Fatal( "Invalid combination of floor and button")
-	}
-
-	if !(button.Type == BUTTON_CALL_UP || button.Type == BUTTON_CALL_DOWN || button.Type == BUTTON_CALL_INSIDE) {
-		log.Fatal( "Invalid argument; button type")
+		return false
 	}
 
 	if(int(C.io_read_bit(C.int(buttonChannelMatrix[button.Floor][button.Type]))) == 1) {
